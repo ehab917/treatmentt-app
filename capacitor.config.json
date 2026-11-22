@@ -1,0 +1,9 @@
+{
+  "appId": "com.treatmentreminder.app",
+  "appName": "تذكير العلاج",
+  "webDir": "www",
+  "android": { "backgroundColor": "#f4f7f6" },
+  "plugins": {
+    "LocalNotifications": { "smallIcon": "ic_stat_pill", "iconColor": "#0FB295" }
+  }
+}
