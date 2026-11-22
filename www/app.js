@@ -152,7 +152,7 @@ function applyTheme() {
 const TONE_LABELS = {
   none: 'toneNone', beep: 'toneBeep', bell: 'toneBell', chime: 'toneChime',
   marimba: 'toneMarimba', digital: 'toneDigital', urgent: 'toneUrgent',
-  soft: 'toneSoft', custom: 'toneCustom'
+  soft: 'toneSoft', custom: 'toneCustom', system: 'toneSystem'
 };
 const VIB_LABELS = {
   none: 'vibNone', light: 'vibLight', medium: 'vibMedium',
@@ -174,6 +174,10 @@ function alertSound() {
 /** نغمة تجريبية من الإعدادات */
 function previewTone(name) {
   const s = S.getState().settings;
+  if (NATIVE.isNative && name === 'system' && NATIVE.DS()) {
+    NATIVE.DS().playRingtone({ uri: s.sysToneUri || '' }).catch(() => {});
+    return;
+  }
   const key = name === 'custom' ? 'custom' : name;
   const ok = SOUND.playTone(key, s.volume == null ? 0.8 : s.volume, s.customTone || '');
   if (ok) SOUND.vibrate((SOUND.VIB_PATTERNS[s.vibration] || []).slice());
@@ -566,13 +570,13 @@ function viewSettings() {
 
   /* ---------- النغمة والاهتزاز ---------- */
   const curTone = s.tone || 'chime';
-  const toneRows = SOUND.TONE_ORDER.concat(curTone === 'custom' ? ['custom'] : [])
+  const toneRows = (NATIVE.isNative ? ['system'] : []).concat(SOUND.TONE_ORDER, curTone === 'custom' && !NATIVE.isNative ? ['custom'] : [])
     .filter((v, i, arr) => arr.indexOf(v) === i)
     .map((name) => `
       <div class="tone-row ${curTone === name ? 'active' : ''}">
         <button type="button" class="tone-pick" data-act="set-tone" data-tone="${name}">
           <span class="radio-dot"></span>
-          <span class="tone-name">${esc(toneLabel(name))}</span>
+          <span class="tone-name">${esc(toneLabel(name))}${name === 'system' && s.sysToneName ? ` <small class="muted">(${esc(s.sysToneName)})</small>` : ''}</span>
           ${curTone === name ? `<span class="chip ok">${esc(t('sound.selected'))}</span>` : ''}
         </button>
         <button type="button" class="btn sm ghost" data-act="preview-tone" data-tone="${name}">▶ ${esc(t('sound.preview'))}</button>
@@ -598,6 +602,12 @@ function viewSettings() {
         </select>
       </div>
     </div>
+    ${NATIVE.isNative ? `<div class="setting">
+      <div class="txt"><b>${esc(t('sound.systemPick'))}</b><span>${esc(s.sysToneName || t('sound.systemDefault'))}</span></div>
+      <div class="ctl"><button type="button" class="btn sm primary" data-act="pick-system-tone">${esc(t('sound.systemBtn'))}</button></div>
+    </div>
+    <p class="tiny muted" style="margin:4px 0 0">${esc(t('sound.systemHint'))}</p>` : ''}
+    ${NATIVE.isNative ? '' : `
     <div class="setting">
       <div class="txt"><b>${esc(t('sound.custom'))}</b><span id="custom-name">${esc(s.customToneName || t('sound.customNone'))}</span></div>
       <div class="ctl"><button type="button" class="btn sm" data-act="pick-custom-tone">${esc(t('sound.customPick'))}</button></div>
@@ -607,7 +617,10 @@ function viewSettings() {
       <p class="tiny" style="margin:4px 0 8px;opacity:.9">${esc(t('sound.phoneToneHint'))}</p>
       <button type="button" class="btn sm soft" data-act="phone-steps">${esc(t('sound.phoneSteps'))}</button>
     </div>
+`}
   </section>`;
+
+  if (NATIVE.isNative) html += nativeReliabilityCard();
 
   html += `<section class="card">
     <div class="section-head"><h2>${esc(t('settings.data'))}</h2></div>
@@ -904,7 +917,7 @@ async function testNotification() {
     await nativeTestNotification();
     toast(t('settings.testNotificationSent'));
     render();
-    nativeEnsureExact();
+    nativeEnsureExact().then(nativeEnsureBattery);
     return;
   }
   notify(t('notif.doseTitle'), t('settings.testNotificationBody'), {
@@ -990,6 +1003,9 @@ function snoozeDose(key, minutes) {
    فتصل في وقتها حتى لو التطبيق مغلق أو الهاتف في وضع السكون، وتُستعاد بعد إعادة التشغيل. */
 let nativePerm = 'prompt';
 let nativeExact = 'granted';
+let nativeBatteryOk = true;
+let nativeMaker = '';
+const NATIVE_PKG = 'com.treatmentreminder.app';
 let nativeTimer = null;
 let nativeBusy = false;
 let nativeDirty = false;
@@ -1033,6 +1049,14 @@ async function nativeRefreshPerm() {
   if (!LN) return;
   try { nativePerm = (await LN.checkPermissions()).display; } catch (e) { /* ignore */ }
   try { nativeExact = (await LN.checkExactNotificationSetting()).exact_alarm; } catch (e) { /* ignore */ }
+  const DS = NATIVE.DS();
+  if (DS) {
+    try {
+      const st = await DS.getStatus();
+      nativeBatteryOk = !!st.ignoringBattery;
+      nativeMaker = st.manufacturer || '';
+    } catch (e) { /* ignore */ }
+  }
 }
 
 async function nativeRequestPermission() {
@@ -1058,6 +1082,59 @@ async function nativeEnsureExact() {
     const ok = await confirmDialog(t('native.exactTitle'), t('native.exactBody'), t('native.exactOk'));
     if (ok) await LN.changeExactNotificationSetting();
   } catch (e) { /* ignore */ }
+}
+
+/** فتح منتقي نغمات الهاتف الأصلي وحفظ الاختيار */
+async function pickSystemTone() {
+  const DS = NATIVE.DS();
+  if (!DS) return;
+  const cur = S.getState().settings;
+  try {
+    const r = await DS.pickRingtone({ title: t('sound.systemPick'), current: cur.sysToneUri || '' });
+    if (r && !r.cancelled) {
+      S.updateSettings({ sysToneUri: r.uri || '', sysToneName: r.title || '', tone: 'system', sound: true });
+      toast(t('toast.saved'));
+      render();
+      previewTone('system');
+    }
+  } catch (e) { toast(t('toast.error')); }
+}
+
+/** استثناء التطبيق من توفير البطارية: أهم شرط لوصول التنبيه والشاشة مقفلة */
+async function nativeEnsureBattery() {
+  const DS = NATIVE.DS();
+  if (!DS || nativePerm !== 'granted') return;
+  await nativeRefreshPerm();
+  if (nativeBatteryOk || localStorage.getItem('tr.battAsked')) return;
+  localStorage.setItem('tr.battAsked', '1');
+  const ok = await confirmDialog(t('native.batteryTitle'), t('native.batteryBody'), t('native.batteryOk'));
+  if (ok) await DS.requestIgnoreBatteryOptimizations();
+}
+
+function nativeOemHint() {
+  const ar = getLang() === 'ar';
+  const m = nativeMaker;
+  if (/xiaomi|redmi|poco/.test(m)) return ar ? 'شاومي: فعّل «التشغيل التلقائي» (Autostart) ثم من الأمان ← البطارية اختر «بدون قيود».' : 'Xiaomi: enable Autostart, then set Battery saver to "No restrictions".';
+  if (/oppo|realme|oneplus/.test(m)) return ar ? 'أوبو/ريلمي/ون بلس: فعّل «التشغيل التلقائي» و«السماح بالنشاط في الخلفية» من معلومات التطبيق ← البطارية.' : 'Oppo/Realme/OnePlus: allow Auto-launch and Background activity in the app battery settings.';
+  if (/vivo|iqoo/.test(m)) return ar ? 'فيفو: فعّل «التشغيل التلقائي» و«استهلاك البطارية في الخلفية ← السماح».' : 'Vivo: enable Autostart and allow High background power consumption.';
+  if (/huawei|honor/.test(m)) return ar ? 'هواوي/هونر: البطارية ← تشغيل التطبيقات ← تذكير العلاج ← «إدارة يدوية» وفعّل الثلاثة خيارات.' : 'Huawei/Honor: Battery > App launch > this app > Manage manually, enable all three.';
+  if (/samsung/.test(m)) return ar ? 'سامسونج: البطارية ← حدود الاستخدام في الخلفية ← «التطبيقات التي لا تنام أبدًا» وأضف تذكير العلاج.' : 'Samsung: Battery > Background usage limits > Never sleeping apps, add this app.';
+  return ar ? 'إن تأخر التنبيه، افتح إعدادات التطبيق ← البطارية واختر «بدون قيود».' : 'If alerts are late, open app settings > Battery and choose Unrestricted.';
+}
+
+function nativeReliabilityCard() {
+  return `<section class="card">
+    <div class="section-head"><h2>${esc(t('native.reliabilityTitle'))}</h2></div>
+    <div class="setting">
+      <div class="txt"><b>${esc(t('native.batteryRow'))}</b><span>${esc(nativeBatteryOk ? t('native.batteryGood') : t('native.batteryBad'))}</span></div>
+      <div class="ctl"><button type="button" class="btn sm ${nativeBatteryOk ? 'ghost' : 'primary'}" data-act="native-battery">${esc(nativeBatteryOk ? t('native.recheck') : t('native.batteryFix'))}</button></div>
+    </div>
+    <div class="btn-row grow" style="margin:8px 0">
+      <button type="button" class="btn soft" data-act="native-notif-settings">${esc(t('native.notifSettings'))}</button>
+      <button type="button" class="btn soft" data-act="native-app-details">${esc(t('native.appDetails'))}</button>
+    </div>
+    <p class="tiny muted" style="margin:0">${esc(nativeOemHint())}</p>
+  </section>`;
 }
 
 function nativeEvents() {
@@ -1130,6 +1207,50 @@ function nativeBuild(ev, used, doseCh, genCh) {
   return { ...base, title: t('notif.summaryTitle'), body, channelId: genCh.id, extra: { type: 'summary', screen: 'today' } };
 }
 
+function strHash(str) {
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) h = ((h * 33) ^ str.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+}
+
+/** ينشئ (أو يعيد استخدام) قناة الجرعات بالنغمة والاهتزاز المختارين ويعيد معرّفها */
+async function nativeDoseChannelId() {
+  const DS = NATIVE.DS();
+  if (!DS) {
+    const ch = nativeChannel('dose');
+    await NATIVE.LN().createChannel(ch);
+    return ch.id;
+  }
+  const s = S.getState().settings;
+  const ar = getLang() === 'ar';
+  const tone = s.sound ? (s.tone || 'chime') : 'none';
+  const pat = (s.vibPattern && s.vibPattern.length) ? s.vibPattern : (SOUND.VIB_PATTERNS[s.vibration] || []);
+  const vibKey = pat.join('-') || 'n';
+  const silent = tone === 'none';
+  let uri = '';
+  let label = '';
+  let key = tone;
+  if (tone === 'system' || tone === 'custom') {
+    uri = tone === 'system' ? (s.sysToneUri || '') : '';
+    key = 'sys' + strHash(uri);
+    label = tone === 'system' && s.sysToneName ? s.sysToneName : (ar ? 'نغمة الهاتف الافتراضية' : 'Phone default');
+  } else if (!silent && Object.prototype.hasOwnProperty.call(SOUND.TONES, tone)) {
+    uri = `android.resource://${NATIVE_PKG}/raw/tone_${tone}`;
+    label = toneLabel(tone);
+  } else {
+    label = ar ? 'صامت' : 'Silent';
+  }
+  const id = `d2_${key}_${strHash(vibKey)}`;
+  await DS.createChannel({
+    id,
+    name: `${ar ? 'الجرعات' : 'Doses'} — ${label}`,
+    uri,
+    silent,
+    pattern: pat.length ? [0].concat(pat) : []
+  });
+  return id;
+}
+
 async function nativeScheduleNow() {
   const LN = NATIVE.LN();
   if (!LN) return;
@@ -1145,9 +1266,8 @@ async function nativeScheduleNow() {
         { id: 'snooze', title: t('notif.snoozeAction') }
       ] }]
     });
-    const doseCh = nativeChannel('dose');
+    const doseCh = { id: await nativeDoseChannelId() };
     const genCh = nativeChannel('general');
-    await LN.createChannel(doseCh);
     await LN.createChannel(genCh);
     const used = new Set([NATIVE_TEST_ID]);
     const list = nativeEvents().map((ev) => nativeBuild(ev, used, doseCh, genCh)).filter(Boolean);
@@ -1171,9 +1291,8 @@ function nativeScheduleSoon() {
 async function nativeTestNotification() {
   const LN = NATIVE.LN();
   if (!LN) return;
-  const ch = nativeChannel('dose');
   try {
-    await LN.createChannel(ch);
+    const ch = { id: await nativeDoseChannelId() };
     await LN.schedule({ notifications: [{
       id: NATIVE_TEST_ID,
       title: t('notif.doseTitle'),
@@ -1247,7 +1366,7 @@ async function nativeInit() {
   if (S.getState().settings.notify && nativePerm !== 'granted' && S.getState().settings.onboarded) {
     await nativeRequestPermission();
   }
-  if (S.getState().settings.onboarded) nativeEnsureExact();
+  if (S.getState().settings.onboarded) nativeEnsureExact().then(nativeEnsureBattery);
   render();
   nativeScheduleSoon();
 }
@@ -1467,7 +1586,12 @@ function bindEvents() {
         break;
       }
       case 'set-tone': {
-        S.updateSettings({ tone: act.dataset.tone || 'chime' });
+        const chosen = act.dataset.tone || 'chime';
+        if (chosen === 'system' && NATIVE.isNative && !S.getState().settings.sysToneName) {
+          await pickSystemTone();
+          break;
+        }
+        S.updateSettings({ tone: chosen });
         render();
         break;
       }
@@ -1521,6 +1645,27 @@ function bindEvents() {
         if (NATIVE.isNative || !SOUND.openSystemNotificationSettings()) toast(t('sound.phoneSteps'));
         break;
       }
+      case 'pick-system-tone': {
+        await pickSystemTone();
+        break;
+      }
+      case 'native-battery': {
+        const DS = NATIVE.DS();
+        if (!DS) break;
+        if (nativeBatteryOk) { await nativeRefreshPerm(); render(); break; }
+        await DS.requestIgnoreBatteryOptimizations();
+        break;
+      }
+      case 'native-notif-settings': {
+        const DS = NATIVE.DS();
+        if (DS) await DS.openAppNotificationSettings();
+        break;
+      }
+      case 'native-app-details': {
+        const DS = NATIVE.DS();
+        if (DS) await DS.openAppDetails();
+        break;
+      }
       case 'native-exact': {
         const LN = NATIVE.LN();
         if (LN) { try { await LN.changeExactNotificationSetting(); } catch (e) { toast(t('toast.error')); } }
@@ -1569,7 +1714,7 @@ function bindEvents() {
       if (e.target.checked) {
         requestNotifPermission().then((p) => {
           S.updateSettings({ notify: p === 'granted' });
-          if (p === 'granted') { toast(t('toast.notifOn')); scheduleAll(); nativeEnsureExact(); }
+          if (p === 'granted') { toast(t('toast.notifOn')); scheduleAll(); nativeEnsureExact().then(nativeEnsureBattery); }
           else { toast(t('toast.notifOff')); }
           render();
         });
@@ -1636,7 +1781,7 @@ async function finishOnboarding() {
   closeModal();
   render();
   scheduleAll();
-  if (NATIVE.isNative) setTimeout(nativeEnsureExact, 500);
+  if (NATIVE.isNative) setTimeout(() => nativeEnsureExact().then(nativeEnsureBattery), 500);
 }
 
 /* ================= بدء التشغيل ================= */
