@@ -30,7 +30,15 @@ MOCK = r"""
     playRingtone: async () => {}, stopRingtone: async () => {},
     requestIgnoreBatteryOptimizations: async () => { calls.battery = true; },
     openAppNotificationSettings: async () => { calls.notifSettings = true; },
-    openAppDetails: async () => {}, openExactAlarmSettings: async () => {}
+    openAppDetails: async () => {}, openExactAlarmSettings: async () => {},
+    scheduleAlarms: async (o) => { calls.alarms = o; }, cancelAlarms: async () => { calls.alarmsCancelled = true; },
+    popResults: async () => { const r = calls.results || []; calls.results = []; return { results: r }; },
+    testAlarm: async (o) => { calls.testAlarm = o; }, openFullScreenSettings: async () => {},
+    getDiagnostics: async () => ({ sdk: 34, manufacturer: 'samsung', model: 'SM-A546', canExact: true, ignoringBattery: false, overlay: false, fullScreen: true,
+      notificationsEnabled: true, pending: 12, nextAt: Date.now() + 60000, nextAlarmClock: Date.now() + 60000, alarmVolume: 3, alarmVolumeMax: 7,
+      log: ['11-22 10:00:00  armNext: alarm set', '11-22 10:01:00  service: ringing x'] }),
+    setSystemAlarm: async (o) => { (calls.sysAlarms = calls.sysAlarms || []).push(o); }, openSystemAlarms: async () => { calls.openedClock = true; },
+    openOverlaySettings: async () => { calls.overlay = true; }
   };
   window.Capacitor = { isNativePlatform: () => true, Plugins: { LocalNotifications: LN, App: APP, Filesystem: FS, Share: SH, DeviceSettings: DS } };
   window.__calls = calls; window.__listeners = listeners; window.__pending = () => pending;
@@ -50,7 +58,7 @@ with sync_playwright() as p:
     # skip onboarding, add med via store
     page.evaluate("""() => {
       const S = window.__tr.store;
-      S.updateSettings({ onboarded: true, tone: 'bell', vibration: 'medium', dailySummary: '20:00' });
+      S.updateSettings({ onboarded: true, alarmMode: false, tone: 'bell', vibration: 'medium', dailySummary: '20:00' });
       S.addMed({ nameAr: 'دواء تجريبي', dose: '1', times: ['08:00','14:00','21:00'], startDate: S.todayISO() });
     }""")
     page.wait_for_timeout(1500)

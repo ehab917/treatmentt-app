@@ -46,6 +46,10 @@ const DEFAULT_STATE = {
     customToneName: '',
     dailySummary: '20:00',
     snoozeMin: 10,
+    alarmMode: true,
+    repeatMin: 5,
+    repeatMax: 6,
+    ringSec: 60,
     graceMin: 30,
     onboarded: false,
     installDismissed: false

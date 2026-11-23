@@ -914,8 +914,8 @@ async function testNotification() {
   }
   S.updateSettings({ notify: true });
   if (NATIVE.isNative) {
-    await nativeTestNotification();
-    toast(t('settings.testNotificationSent'));
+    const msg = await nativeTestNotification();
+    toast(msg || t('settings.testNotificationSent'));
     render();
     nativeEnsureExact().then(nativeEnsureBattery);
     return;
@@ -1005,6 +1005,9 @@ let nativePerm = 'prompt';
 let nativeExact = 'granted';
 let nativeBatteryOk = true;
 let nativeMaker = '';
+let nativeFullScreen = true;
+let nativeOverlay = true;
+let nativePollTimer = null;
 const NATIVE_PKG = 'com.treatmentreminder.app';
 let nativeTimer = null;
 let nativeBusy = false;
@@ -1055,6 +1058,8 @@ async function nativeRefreshPerm() {
       const st = await DS.getStatus();
       nativeBatteryOk = !!st.ignoringBattery;
       nativeMaker = st.manufacturer || '';
+      nativeFullScreen = st.fullScreen !== false;
+      nativeOverlay = st.overlay !== false;
     } catch (e) { /* ignore */ }
   }
 }
@@ -1082,6 +1087,87 @@ async function nativeEnsureExact() {
     const ok = await confirmDialog(t('native.exactTitle'), t('native.exactBody'), t('native.exactOk'));
     if (ok) await LN.changeExactNotificationSetting();
   } catch (e) { /* ignore */ }
+}
+
+function nativeFmtTs(ms) {
+  if (!ms) return '—';
+  const d = new Date(ms);
+  const p2 = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
+}
+
+/** تقرير تشخيصي: يوضّح أين تتعطل التنبيهات (صلاحيات، جدولة، تشغيل الصوت، ظهور الشاشة) */
+async function nativeBuildDiagnostics() {
+  const DS = NATIVE.DS();
+  if (!DS) return null;
+  const ar = getLang() === 'ar';
+  const d = await DS.getDiagnostics();
+  const ok = (v) => (v ? '✅' : '❌');
+  const rows = [
+    [ar ? 'الهاتف' : 'Device', `${d.manufacturer} ${d.model} (Android API ${d.sdk})`],
+    [ar ? 'إشعارات التطبيق مفعّلة' : 'Notifications enabled', ok(d.notificationsEnabled)],
+    [ar ? 'المنبّهات الدقيقة' : 'Exact alarms', ok(d.canExact)],
+    [ar ? 'استثناء البطارية' : 'Battery exemption', ok(d.ignoringBattery)],
+    [ar ? 'العرض فوق التطبيقات' : 'Display over other apps', ok(d.overlay)],
+    [ar ? 'الإشعار بملء الشاشة' : 'Full-screen notifications', ok(d.fullScreen)],
+    [ar ? 'صوت المنبّه' : 'Alarm volume', `${d.alarmVolume}/${d.alarmVolumeMax}`],
+    [ar ? 'منبّهات قادمة محفوظة' : 'Pending alarms', String(d.pending)],
+    [ar ? 'أقرب منبّه (التطبيق)' : 'Next alarm (app)', nativeFmtTs(d.nextAt)],
+    [ar ? 'أقرب منبّه (النظام)' : 'Next alarm (system)', nativeFmtTs(d.nextAlarmClock)]
+  ];
+  const log = (d.log || []).slice(-25);
+  const text = rows.map((r) => `${r[0]}: ${r[1]}`).join('\n') + '\n\n' + (ar ? 'السجل' : 'Log') + ':\n' + log.join('\n');
+  return { rows, log, text };
+}
+
+async function nativeShowDiagnostics() {
+  let rep;
+  try { rep = await nativeBuildDiagnostics(); } catch (e) { rep = null; }
+  if (!rep) { toast(t('toast.error')); return; }
+  const body = `<div style="font-size:.85rem;line-height:1.7">
+    ${rep.rows.map((r) => `<div style="display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid var(--line, #e5e7eb);padding:3px 0"><span>${esc(r[0])}</span><b dir="ltr">${esc(r[1])}</b></div>`).join('')}
+    <h3 style="margin:12px 0 4px;font-size:.9rem">${esc(t('native.diagLog'))}</h3>
+    <pre dir="ltr" style="white-space:pre-wrap;font-size:.72rem;max-height:200px;overflow:auto;margin:0">${esc(rep.log.join('\n') || '—')}</pre>
+  </div>`;
+  const dlg = openModal({
+    title: t('native.diagTitle'),
+    body,
+    footer: `<button type="button" class="btn ghost" data-act="close-modal">${esc(t('common.close'))}</button>
+             <button type="button" class="btn primary" data-act="native-share-diag">${esc(t('native.diagShare'))}</button>`
+  });
+  dlg.addEventListener('click', async function h(e) {
+    const a = e.target.closest('[data-act="native-share-diag"]');
+    if (!a) return;
+    const SH = NATIVE.SHARE();
+    if (SH) { try { await SH.share({ title: 'diagnostics', text: rep.text }); } catch (er) { /* cancelled */ } }
+  });
+}
+
+/** يضيف مواعيد الأدوية كمنبّهات يومية في تطبيق الساعة الأصلي بالهاتف (نفس صلاحيات المنبّه الأصلي) */
+async function nativeSyncToClock() {
+  const DS = NATIVE.DS();
+  if (!DS) return;
+  const s = S.getState();
+  const byTime = {};
+  s.meds.filter((m) => !m.paused).forEach((m) => {
+    (m.times || []).forEach((tm) => { (byTime[tm] = byTime[tm] || []).push(medName(m)); });
+  });
+  const times = Object.keys(byTime).sort();
+  if (!times.length) { toast(t('native.syncClockNone')); return; }
+  const ok = await confirmDialog(t('native.syncClockTitle'), `${t('native.syncClockBody')} (${times.length})`, t('native.syncClockOk'));
+  if (!ok) return;
+  const ring = s.settings.tone === 'system' ? (s.settings.sysToneUri || '') : '';
+  let done = 0;
+  for (const tm of times) {
+    const [hh, mm] = tm.split(':').map(Number);
+    try {
+      await DS.setSystemAlarm({ hour: hh, minute: mm, label: '💊 ' + byTime[tm].join('، '), daily: true, ringtone: ring });
+      done++;
+    } catch (e) { /* ignore a failed one and continue */ }
+    await new Promise((r) => setTimeout(r, 1200));
+  }
+  toast(done ? `${t('native.syncClockDone')} (${done})` : t('toast.error'));
+  if (done) { try { await DS.openSystemAlarms(); } catch (e) { /* ignore */ } }
 }
 
 /** فتح منتقي نغمات الهاتف الأصلي وحفظ الاختيار */
@@ -1129,11 +1215,45 @@ function nativeReliabilityCard() {
       <div class="txt"><b>${esc(t('native.batteryRow'))}</b><span>${esc(nativeBatteryOk ? t('native.batteryGood') : t('native.batteryBad'))}</span></div>
       <div class="ctl"><button type="button" class="btn sm ${nativeBatteryOk ? 'ghost' : 'primary'}" data-act="native-battery">${esc(nativeBatteryOk ? t('native.recheck') : t('native.batteryFix'))}</button></div>
     </div>
+    <div class="setting">
+      <div class="txt"><b>${esc(t('native.fullScreenRow'))}</b><span>${esc(nativeFullScreen ? t('native.fullScreenGood') : t('native.fullScreenBad'))}</span></div>
+      <div class="ctl">${nativeFullScreen ? '' : `<button type="button" class="btn sm primary" data-act="native-fullscreen">${esc(t('native.batteryFix'))}</button>`}</div>
+    </div>
+    <div class="setting">
+      <div class="txt"><b>${esc(t('native.overlayRow'))}</b><span>${esc(nativeOverlay ? t('native.overlayGood') : t('native.overlayBad'))}</span></div>
+      <div class="ctl">${nativeOverlay ? '' : `<button type="button" class="btn sm primary" data-act="native-overlay">${esc(t('native.batteryFix'))}</button>`}</div>
+    </div>
+    <div class="setting">
+      <div class="txt"><b>${esc(t('native.alarmMode'))}</b><span>${esc(t('native.alarmModeHint'))}</span></div>
+      <label class="ctl switch" aria-label="${esc(t('native.alarmMode'))}">
+        <input type="checkbox" id="opt-alarm-mode" ${S.getState().settings.alarmMode !== false ? 'checked' : ''}>
+        <span class="track"></span>
+      </label>
+    </div>
+    <div class="setting">
+      <div class="txt"><b>${esc(t('native.repeatEvery'))}</b></div>
+      <div class="ctl"><select id="opt-repeat-min" style="width:auto;min-width:100px">
+        ${[2, 3, 5, 10, 15].map((v) => `<option value="${v}" ${(S.getState().settings.repeatMin || 5) === v ? 'selected' : ''}>${v} ${esc(t('native.minShort'))}</option>`).join('')}
+      </select></div>
+    </div>
+    <div class="setting">
+      <div class="txt"><b>${esc(t('native.repeatCount'))}</b></div>
+      <div class="ctl"><select id="opt-repeat-max" style="width:auto;min-width:100px">
+        ${[0, 3, 6, 10, 20].map((v) => `<option value="${v}" ${(S.getState().settings.repeatMax == null ? 6 : S.getState().settings.repeatMax) === v ? 'selected' : ''}>${v === 0 ? esc(t('native.repeatNone')) : v}</option>`).join('')}
+      </select></div>
+    </div>
     <div class="btn-row grow" style="margin:8px 0">
       <button type="button" class="btn soft" data-act="native-notif-settings">${esc(t('native.notifSettings'))}</button>
       <button type="button" class="btn soft" data-act="native-app-details">${esc(t('native.appDetails'))}</button>
     </div>
     <p class="tiny muted" style="margin:0">${esc(nativeOemHint())}</p>
+    <div class="btn-row grow" style="margin-top:10px">
+      <button type="button" class="btn soft" data-act="native-diagnose">🔍 ${esc(t('native.diagBtn'))}</button>
+    </div>
+    <div class="btn-row grow" style="margin-top:8px">
+      <button type="button" class="btn soft" data-act="native-sync-clock">⏰ ${esc(t('native.syncClockBtn'))}</button>
+      <button type="button" class="btn ghost" data-act="native-open-clock">${esc(t('native.openClockBtn'))}</button>
+    </div>
   </section>`;
 }
 
@@ -1207,6 +1327,78 @@ function nativeBuild(ev, used, doseCh, genCh) {
   return { ...base, title: t('notif.summaryTitle'), body, channelId: genCh.id, extra: { type: 'summary', screen: 'today' } };
 }
 
+function nativeToneInfo() {
+  const s = S.getState().settings;
+  const tone = s.sound ? (s.tone || 'chime') : 'none';
+  const pat = (s.vibPattern && s.vibPattern.length) ? s.vibPattern : (SOUND.VIB_PATTERNS[s.vibration] || []);
+  const silent = tone === 'none';
+  let uri = '';
+  if (tone === 'system') uri = s.sysToneUri || '';
+  else if (!silent && tone !== 'custom' && Object.prototype.hasOwnProperty.call(SOUND.TONES, tone)) {
+    uri = `android.resource://${NATIVE_PKG}/raw/tone_${tone}`;
+  }
+  return { silent, uri, pattern: pat.slice() };
+}
+
+/** إعدادات المنبّه الأصلي: النغمة، التكرار، ونصوص شاشة المنبّه */
+function nativeAlarmConfig() {
+  const s = S.getState().settings;
+  const snooze = s.snoozeMin || 10;
+  return {
+    ...nativeToneInfo(),
+    ringSec: s.ringSec || 60,
+    repeatMin: s.repeatMin || 5,
+    repeatMax: s.repeatMax == null ? 6 : s.repeatMax,
+    snoozeMin: snooze,
+    labels: {
+      taken: '✅  ' + t('native.takenBtn'),
+      snooze: `⏰  ${t('native.snoozeBtn')} ${snooze} ${t('native.minShort')}`,
+      skip: t('native.skipBtn'),
+      slide: t('native.slideLabel'),
+      more: t('native.moreLabel'),
+      rtl: getLang() === 'ar'
+    }
+  };
+}
+
+function nativeAlarmFromEvent(ev) {
+  const dose = ev.med.dose ? ' — ' + ev.med.dose + ' ' + t('meds.unit') : '';
+  return {
+    at: ev.ts, key: ev.key, type: 'dose', date: ev.date, medId: ev.medId, time: ev.time,
+    title: t('notif.doseTitle'), body: medName(ev.med) + dose
+  };
+}
+
+/** مفاتيح الجرعات المسجَّلة (مأخوذة/متخطاة) لإلغاء تكراراتها في الجزء الأصلي */
+function nativeDoneKeys() {
+  const keys = [];
+  const today = S.todayISO();
+  for (let i = -1; i < NATIVE_HORIZON_DAYS; i++) {
+    const date = S.addDaysISO(today, i);
+    S.expectedDoses(date).forEach((d) => {
+      if (S.getLog(date, d.medId, d.time)) keys.push(`dose:${date}:${d.medId}:${d.time}`);
+    });
+  }
+  return keys;
+}
+
+/** نتائج ضغط المريض على «أخذتها/تخطي» من شاشة المنبّه (حتى لو كان التطبيق مغلقًا) */
+async function nativePollResults() {
+  const DS = NATIVE.DS();
+  if (!DS) return;
+  try {
+    const r = await DS.popResults();
+    const list = (r && r.results) || [];
+    if (!list.length) return;
+    list.forEach((x) => {
+      if (x.date && x.medId && x.time && !S.getLog(x.date, x.medId, x.time)) {
+        S.setDoseStatus(x.date, x.medId, x.time, x.status === 'skipped' ? 'skipped' : 'taken');
+      }
+    });
+    render();
+  } catch (e) { /* ignore */ }
+}
+
 function strHash(str) {
   let h = 5381;
   for (let i = 0; i < str.length; i++) h = ((h * 33) ^ str.charCodeAt(i)) >>> 0;
@@ -1259,7 +1451,22 @@ async function nativeScheduleNow() {
     const pend = await LN.getPending();
     const ids = (pend.notifications || []).filter((n) => n.id !== NATIVE_TEST_ID).map((n) => ({ id: n.id }));
     if (ids.length) await LN.cancel({ notifications: ids });
-    if (!s.notify || nativePerm !== 'granted') return;
+    const DS = NATIVE.DS();
+    if (!s.notify || nativePerm !== 'granted') {
+      if (DS) { try { await DS.cancelAlarms(); } catch (e) { /* ignore */ } }
+      return;
+    }
+    const events = nativeEvents();
+    let alarmOk = false;
+    if (DS && s.alarmMode !== false) {
+      try {
+        const alarms = events.filter((e) => e.type === 'dose' && !e.key.endsWith(':snz')).map(nativeAlarmFromEvent);
+        await DS.scheduleAlarms({ alarms, doneKeys: nativeDoneKeys(), config: nativeAlarmConfig() });
+        alarmOk = true;
+      } catch (e) { console.warn('alarm schedule failed, falling back to notifications', e); }
+    } else if (DS) {
+      try { await DS.cancelAlarms(); } catch (e) { /* ignore */ }
+    }
     await LN.registerActionTypes({
       types: [{ id: 'DOSE', actions: [
         { id: 'taken', title: t('notif.takenAction') },
@@ -1270,7 +1477,10 @@ async function nativeScheduleNow() {
     const genCh = nativeChannel('general');
     await LN.createChannel(genCh);
     const used = new Set([NATIVE_TEST_ID]);
-    const list = nativeEvents().map((ev) => nativeBuild(ev, used, doseCh, genCh)).filter(Boolean);
+    const list = events
+      .filter((ev) => !(alarmOk && ev.type === 'dose'))
+      .map((ev) => nativeBuild(ev, used, doseCh, genCh))
+      .filter(Boolean);
     if (list.length) await LN.schedule({ notifications: list });
   } catch (e) {
     console.warn('native schedule failed', e);
@@ -1290,7 +1500,14 @@ function nativeScheduleSoon() {
 
 async function nativeTestNotification() {
   const LN = NATIVE.LN();
-  if (!LN) return;
+  if (!LN) return '';
+  const DS = NATIVE.DS();
+  if (DS && S.getState().settings.alarmMode !== false) {
+    try {
+      await DS.testAlarm({ delaySec: 5, title: t('notif.doseTitle'), body: t('settings.testNotificationBody'), config: nativeAlarmConfig() });
+      return t('native.testAlarmStarted');
+    } catch (e) { /* fall back to a plain notification */ }
+  }
   try {
     const ch = { id: await nativeDoseChannelId() };
     await LN.schedule({ notifications: [{
@@ -1302,6 +1519,7 @@ async function nativeTestNotification() {
       extra: { type: 'test', screen: 'settings' }
     }] });
   } catch (e) { toast(t('toast.error')); }
+  return '';
 }
 
 async function nativeShareFile(filename, content, mime) {
@@ -1357,12 +1575,16 @@ async function nativeInit() {
     APP.addListener('appStateChange', async (st) => {
       if (!st.isActive) return;
       await nativeRefreshPerm();
+      await nativePollResults();
       render();
       nativeScheduleSoon();
     });
   }
   S.subscribe(() => nativeScheduleSoon());
   await nativeRefreshPerm();
+  await nativePollResults();
+  clearInterval(nativePollTimer);
+  nativePollTimer = setInterval(() => { if (document.visibilityState === 'visible') nativePollResults(); }, 4000);
   if (S.getState().settings.notify && nativePerm !== 'granted' && S.getState().settings.onboarded) {
     await nativeRequestPermission();
   }
@@ -1656,6 +1878,23 @@ function bindEvents() {
         await DS.requestIgnoreBatteryOptimizations();
         break;
       }
+      case 'native-overlay': {
+        const DS = NATIVE.DS();
+        if (DS) await DS.openOverlaySettings();
+        break;
+      }
+      case 'native-diagnose': await nativeShowDiagnostics(); break;
+      case 'native-sync-clock': await nativeSyncToClock(); break;
+      case 'native-open-clock': {
+        const DS = NATIVE.DS();
+        if (DS) await DS.openSystemAlarms();
+        break;
+      }
+      case 'native-fullscreen': {
+        const DS = NATIVE.DS();
+        if (DS) await DS.openFullScreenSettings();
+        break;
+      }
       case 'native-notif-settings': {
         const DS = NATIVE.DS();
         if (DS) await DS.openAppNotificationSettings();
@@ -1707,6 +1946,9 @@ function bindEvents() {
       if (lbl) lbl.textContent = e.target.value + '%';
     }
     if (id === 'opt-vibration') { S.updateSettings({ vibration: e.target.value }); }
+    if (id === 'opt-alarm-mode') { S.updateSettings({ alarmMode: e.target.checked }); }
+    if (id === 'opt-repeat-min') { S.updateSettings({ repeatMin: Number(e.target.value) || 5 }); }
+    if (id === 'opt-repeat-max') { S.updateSettings({ repeatMax: Number(e.target.value) }); }
     if (id === 'opt-summary') { S.updateSettings({ dailySummary: e.target.value }); scheduleAll(); }
     if (id === 'opt-snooze') { S.updateSettings({ snoozeMin: Number(e.target.value) || 10 }); }
     if (id === 'opt-grace') { S.updateSettings({ graceMin: Number(e.target.value) || 0 }); render(); }
