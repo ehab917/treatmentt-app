@@ -917,7 +917,7 @@ async function testNotification() {
     const msg = await nativeTestNotification();
     toast(msg || t('settings.testNotificationSent'));
     render();
-    nativeEnsureExact().then(nativeEnsureBattery);
+    nativeEnsureExact().then(nativeEnsureBattery).then(nativeEnsureOverlay);
     return;
   }
   notify(t('notif.doseTitle'), t('settings.testNotificationBody'), {
@@ -1197,11 +1197,22 @@ async function nativeEnsureBattery() {
   if (ok) await DS.requestIgnoreBatteryOptimizations();
 }
 
+/** العرض فوق التطبيقات: شرط ظهور شاشة المنبّه تلقائيًا فوق القفل (خصوصًا أوبو/شاومي) */
+async function nativeEnsureOverlay() {
+  const DS = NATIVE.DS();
+  if (!DS || nativePerm !== 'granted') return;
+  await nativeRefreshPerm();
+  if (nativeOverlay || localStorage.getItem('tr.overlayAsked')) return;
+  localStorage.setItem('tr.overlayAsked', '1');
+  const ok = await confirmDialog(t('native.overlayTitle'), t('native.overlayBody'), t('native.batteryOk'));
+  if (ok) await DS.openOverlaySettings();
+}
+
 function nativeOemHint() {
   const ar = getLang() === 'ar';
   const m = nativeMaker;
   if (/xiaomi|redmi|poco/.test(m)) return ar ? 'شاومي: فعّل «التشغيل التلقائي» (Autostart) ثم من الأمان ← البطارية اختر «بدون قيود».' : 'Xiaomi: enable Autostart, then set Battery saver to "No restrictions".';
-  if (/oppo|realme|oneplus/.test(m)) return ar ? 'أوبو/ريلمي/ون بلس: فعّل «التشغيل التلقائي» و«السماح بالنشاط في الخلفية» من معلومات التطبيق ← البطارية.' : 'Oppo/Realme/OnePlus: allow Auto-launch and Background activity in the app battery settings.';
+  if (/oppo|realme|oneplus/.test(m)) return ar ? 'أوبو/ريلمي: (1) لا تسحب التطبيق من قائمة التطبيقات الأخيرة، فهذا يوقفه ويلغي المنبّهات؛ بدلًا من ذلك اقفله 🔒 من القائمة. (2) فعّل «التشغيل التلقائي» و«السماح بالنشاط في الخلفية». (3) فعّل «العرض فوق التطبيقات».' : 'Oppo/Realme: (1) never swipe the app away from Recents (it force-stops the app and cancels alarms); lock it with the 🔒 instead. (2) Enable Auto-launch and Background activity. (3) Enable Display over other apps.';
   if (/vivo|iqoo/.test(m)) return ar ? 'فيفو: فعّل «التشغيل التلقائي» و«استهلاك البطارية في الخلفية ← السماح».' : 'Vivo: enable Autostart and allow High background power consumption.';
   if (/huawei|honor/.test(m)) return ar ? 'هواوي/هونر: البطارية ← تشغيل التطبيقات ← تذكير العلاج ← «إدارة يدوية» وفعّل الثلاثة خيارات.' : 'Huawei/Honor: Battery > App launch > this app > Manage manually, enable all three.';
   if (/samsung/.test(m)) return ar ? 'سامسونج: البطارية ← حدود الاستخدام في الخلفية ← «التطبيقات التي لا تنام أبدًا» وأضف تذكير العلاج.' : 'Samsung: Battery > Background usage limits > Never sleeping apps, add this app.';
@@ -1249,6 +1260,7 @@ function nativeReliabilityCard() {
     <p class="tiny muted" style="margin:0">${esc(nativeOemHint())}</p>
     <div class="btn-row grow" style="margin-top:10px">
       <button type="button" class="btn soft" data-act="native-diagnose">🔍 ${esc(t('native.diagBtn'))}</button>
+      <button type="button" class="btn soft" data-act="native-test-2min">⏱ ${esc(t('native.test2min'))}</button>
     </div>
     <div class="btn-row grow" style="margin-top:8px">
       <button type="button" class="btn soft" data-act="native-sync-clock">⏰ ${esc(t('native.syncClockBtn'))}</button>
@@ -1588,7 +1600,7 @@ async function nativeInit() {
   if (S.getState().settings.notify && nativePerm !== 'granted' && S.getState().settings.onboarded) {
     await nativeRequestPermission();
   }
-  if (S.getState().settings.onboarded) nativeEnsureExact().then(nativeEnsureBattery);
+  if (S.getState().settings.onboarded) nativeEnsureExact().then(nativeEnsureBattery).then(nativeEnsureOverlay);
   render();
   nativeScheduleSoon();
 }
@@ -1884,6 +1896,15 @@ function bindEvents() {
         break;
       }
       case 'native-diagnose': await nativeShowDiagnostics(); break;
+      case 'native-test-2min': {
+        const DS = NATIVE.DS();
+        if (!DS) break;
+        try {
+          await DS.testAlarm({ delaySec: 120, title: t('notif.doseTitle'), body: t('settings.testNotificationBody'), config: nativeAlarmConfig() });
+          toast(t('native.test2minStarted'));
+        } catch (e) { toast(t('toast.error')); }
+        break;
+      }
       case 'native-sync-clock': await nativeSyncToClock(); break;
       case 'native-open-clock': {
         const DS = NATIVE.DS();
@@ -1956,7 +1977,7 @@ function bindEvents() {
       if (e.target.checked) {
         requestNotifPermission().then((p) => {
           S.updateSettings({ notify: p === 'granted' });
-          if (p === 'granted') { toast(t('toast.notifOn')); scheduleAll(); nativeEnsureExact().then(nativeEnsureBattery); }
+          if (p === 'granted') { toast(t('toast.notifOn')); scheduleAll(); nativeEnsureExact().then(nativeEnsureBattery).then(nativeEnsureOverlay); }
           else { toast(t('toast.notifOff')); }
           render();
         });
@@ -2023,7 +2044,7 @@ async function finishOnboarding() {
   closeModal();
   render();
   scheduleAll();
-  if (NATIVE.isNative) setTimeout(() => nativeEnsureExact().then(nativeEnsureBattery), 500);
+  if (NATIVE.isNative) setTimeout(() => nativeEnsureExact().then(nativeEnsureBattery).then(nativeEnsureOverlay), 500);
 }
 
 /* ================= بدء التشغيل ================= */
