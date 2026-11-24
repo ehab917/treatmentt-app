@@ -1,76 +1,48 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>سياسة الخصوصية — تذكير العلاج / Privacy Policy — Treatment Reminder</title>
-<style>
-  body{font-family:system-ui,"Segoe UI",Tahoma,Arial,sans-serif;max-width:760px;margin:0 auto;padding:24px 18px;line-height:1.8;color:#0f1f1b;background:#fff}
-  h1{color:#0a7a66;font-size:1.6rem} h2{margin-top:1.6em;border-inline-start:4px solid #20bd9a;padding-inline-start:10px;font-size:1.15rem}
-  .en{direction:ltr;text-align:left;margin-top:3em;border-top:2px solid #cfdcd8;padding-top:1em}
-  code{background:#eef5f3;padding:1px 6px;border-radius:6px}
-  @media (prefers-color-scheme:dark){body{background:#0a100f;color:#f2f8f6}code{background:#16221f}h1{color:#22c7a8}}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>تذكير العلاج</title>
+    <!-- ربط الملفات الـ 3 اللي بعتهولك -->
+    <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
-<h1>سياسة الخصوصية — تطبيق «تذكير العلاج»</h1>
-<p>آخر تحديث: نوفمبر 2026</p>
+    <div id="app">
+        <!-- الهيدر (رأس الصفحة) -->
+        <header class="topbar">
+            <div class="brand">
+                <h1 id="app-title">تذكير العلاج</h1>
+                <p id="app-tagline" class="muted">خُذ دواك في وقته.. صحتك أمانة.</p>
+            </div>
+            <div class="topbar-actions">
+                <button class="icon-btn" id="btn-lang" onclick="changeLang(state.lang === 'ar' ? 'en' : 'ar')">
+                    <span id="lang-label">EN</span>
+                </button>
+            </div>
+        </header>
 
-<h2>باختصار</h2>
-<p>التطبيق <b>لا يجمع ولا يرسل ولا يشارك أي بيانات</b>. كل ما تدخله (الأدوية، المواعيد، سجل الجرعات، الإعدادات) يُحفظ <b>على جهازك فقط</b>. لا توجد حسابات ولا خوادم ولا إعلانات ولا أدوات تحليل أو تتبّع.</p>
+        <!-- المحتوى الرئيسي (اللي بيتغير بـ app.js) -->
+        <main id="view" class="view" role="main">
+            <!-- هنا بيظهر الجدول والأدوية -->
+        </main>
 
-<h2>البيانات التي يحفظها التطبيق على جهازك</h2>
-<ul>
-  <li>أسماء الأدوية وجرعاتها ومواعيدها وكميات المخزون التي تدخلها.</li>
-  <li>مواعيد الأطباء وسجل أخذ الجرعات.</li>
-  <li>إعدادات التطبيق (اللغة، النغمة، حجم الخط، المظهر) واسم المريض إن أدخلته.</li>
-</ul>
-<p>تبقى هذه البيانات في مخزن التطبيق المحلي ولا تغادر جهازك إلا إذا اخترتَ أنت تصدير نسخة احتياطية أو مشاركة ملف التقويم، وعندها تُرسَل إلى الجهة التي تختارها بنفسك (مثل Google Drive أو واتساب).</p>
+        <!-- شريط التنقل السفلي -->
+        <nav class="tabbar" id="tabbar">
+            <!-- بيتحمل بالجافاسكريبت -->
+        </nav>
+    </div>
 
-<h2>الأذونات ولماذا يطلبها التطبيق</h2>
-<ul>
-  <li><b>الإشعارات:</b> لتذكيرك بمواعيد الجرعات والمواعيد ونفاد الدواء.</li>
-  <li><b>المنبّهات الدقيقة والإشعارات بملء الشاشة:</b> ليرنّ المنبّه في موعده بالضبط وتظهر شاشة التأكيد حتى لو كان الهاتف مقفلًا.</li>
-  <li><b>خدمة المقدّمة والاهتزاز وإبقاء الجهاز مستيقظًا:</b> لتشغيل صوت المنبّه والاهتزاز إلى أن تؤكد الجرعة.</li>
-  <li><b>إعادة التشغيل:</b> لإعادة ضبط المنبّهات بعد إعادة تشغيل الهاتف.</li>
-</ul>
-<p>لا يطلب التطبيق الوصول إلى الموقع أو الكاميرا أو الميكروفون أو جهات الاتصال أو الصور.</p>
+    <!-- نافذة إضافة دواء جديدة -->
+    <dialog id="modal" class="modal"></dialog>
 
-<h2>الأطفال</h2>
-<p>التطبيق غير موجَّه للأطفال دون 13 عامًا، ولا نجمع أي بيانات منهم.</p>
+    <!-- إشعارات صغيرة (Toast) -->
+    <div id="toast-wrap" class="toast-wrap" aria-live="polite"></div>
 
-<h2>تنبيه طبي</h2>
-<p>التطبيق أداة تذكير تنظيمية فقط وليس جهازًا طبيًا، ولا يقدّم تشخيصًا أو نصيحة علاجية. استشر طبيبك أو الصيدلي في كل ما يخص الدواء والجرعات.</p>
-
-<h2>حذف بياناتك</h2>
-<p>يمكنك حذف كل البيانات من داخل التطبيق (الإعدادات ← البيانات)، أو بإزالة التطبيق من هاتفك.</p>
-
-<h2>التواصل</h2>
-<p>لأي استفسار عن الخصوصية: <code>ضع بريدك الإلكتروني هنا</code></p>
-
-<div class="en">
-<h1>Privacy Policy — Treatment Reminder</h1>
-<p>Last updated: November 2026</p>
-<h2>Summary</h2>
-<p>The app <b>does not collect, transmit or share any data</b>. Everything you enter (medications, appointments, dose history, settings) is stored <b>only on your device</b>. There are no accounts, servers, ads, analytics or tracking.</p>
-<h2>Data stored on your device</h2>
-<p>Medication names, doses, schedules and stock counts; appointments and dose history; app settings and an optional patient name. This data never leaves your device unless <i>you</i> choose to export a backup or share a calendar file, in which case it goes to the destination you pick (e.g. Google Drive, WhatsApp).</p>
-<h2>Permissions</h2>
-<ul>
-<li><b>Notifications</b> — dose, appointment and low-stock reminders.</li>
-<li><b>Exact alarms &amp; full-screen notifications</b> — so the alarm rings on time and the confirmation screen appears over the lock screen.</li>
-<li><b>Foreground service, vibration, wake lock</b> — to play the alarm sound and vibration until you confirm.</li>
-<li><b>Boot completed</b> — to restore alarms after a restart.</li>
-</ul>
-<p>The app does not access location, camera, microphone, contacts or photos.</p>
-<h2>Children</h2>
-<p>The app is not directed to children under 13 and collects no data from them.</p>
-<h2>Medical disclaimer</h2>
-<p>This is an organizational reminder tool, not a medical device. It provides no diagnosis or treatment advice. Consult your doctor or pharmacist about medications and doses.</p>
-<h2>Delete your data</h2>
-<p>Delete all data in the app (Settings &rarr; Data) or uninstall the app.</p>
-<h2>Contact</h2>
-<p><code>put your email here</code></p>
-</div>
+    <!-- استدعاء ملفات الجافاسكريبت بالترتيب الصحيح -->
+    <script type="module" src="./sounds.js"></script>
+    <script type="module" src="./native.js"></script>
+    <script type="module" src="./i18n.js"></script>
+    <script type="module" src="./app.js"></script>
 </body>
 </html>
