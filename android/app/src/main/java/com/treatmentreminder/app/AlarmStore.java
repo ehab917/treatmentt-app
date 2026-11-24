@@ -91,13 +91,13 @@ final class AlarmStore {
         sp(c).edit().putString("config", json).apply();
     }
 
-    static synchronized void addResult(Context c, AlarmItem a, String status) {
+    static synchronized void addResult(Context c, AlarmItem a, String medId, String status) {
         try {
             JSONArray arr = new JSONArray(sp(c).getString("results", "[]"));
             JSONObject o = new JSONObject();
-            o.put("key", a.key);
+            o.put("key", "dose:" + a.date + ":" + medId + ":" + a.time);
             o.put("date", a.date);
-            o.put("medId", a.medId);
+            o.put("medId", medId);
             o.put("time", a.time);
             o.put("status", status);
             o.put("ts", System.currentTimeMillis());

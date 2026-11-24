@@ -85,6 +85,28 @@ const STRINGS = {
       snoozed: 'تم تأجيل التنبيه',
       summaryGeneric: 'راجع جرعات اليوم'
     },
+    stock: {
+      have: 'عدد الحبات المتبقي',
+      perDose: 'الحبات في كل جرعة',
+      left: 'متبقي',
+      lasts: 'يكفي',
+      daysShort: 'يوم',
+      pillsShort: 'حبة',
+      refillBtn: 'تعبئة',
+      refillTitle: 'تعبئة المخزون',
+      refillAdd: 'عدد الحبات المضافة',
+      lowBanner: '{name}: متبقي {n} حبة تكفي نحو {d} يوم — حان وقت التعبئة',
+      outBanner: '{name}: نفد الدواء! أضف مخزونًا جديدًا',
+      outShort: '{name}: نفد',
+      notifTitle: 'قارب الدواء على النفاد'
+    },
+    ui: {
+      fontSize: 'حجم الخط',
+      fontHint: 'يطبَّق على كل التطبيق',
+      font_small: 'صغير',
+      font_medium: 'متوسط',
+      font_large: 'كبير'
+    },
     native: {
       exactTitle: 'تنبيه في الوقت بالضبط',
       exactBody: 'ليصلك تنبيه الجرعة في دقيقتها بالضبط حتى والهاتف في وضع السكون، فعّل إذن «المنبّهات والتذكيرات» للتطبيق في الشاشة التالية.',
@@ -103,6 +125,8 @@ const STRINGS = {
       notifSettings: 'إعدادات الإشعارات',
       appDetails: 'إعدادات التطبيق',
       takenBtn: 'أخذتها',
+      takenSel: 'أخذت المحدّد',
+      pickOne: 'اختر دواءً واحدًا على الأقل',
       snoozeBtn: 'تأجيل',
       skipBtn: 'تخطي هذه الجرعة',
       slideLabel: 'اسحب لإيقاف الصوت (سيعود التنبيه إن لم تؤكد)',
@@ -264,6 +288,28 @@ const STRINGS = {
       snoozed: 'Reminder snoozed',
       summaryGeneric: "Review today's doses"
     },
+    stock: {
+      have: 'Pills remaining',
+      perDose: 'Pills per dose',
+      left: 'Left',
+      lasts: 'lasts',
+      daysShort: 'days',
+      pillsShort: 'pills',
+      refillBtn: 'Refill',
+      refillTitle: 'Refill stock',
+      refillAdd: 'Pills to add',
+      lowBanner: '{name}: {n} pills left, about {d} days — time to refill',
+      outBanner: '{name}: out of stock! Add new supply',
+      outShort: '{name}: out',
+      notifTitle: 'Medication running low'
+    },
+    ui: {
+      fontSize: 'Font size',
+      fontHint: 'Applies across the app',
+      font_small: 'Small',
+      font_medium: 'Medium',
+      font_large: 'Large'
+    },
     native: {
       exactTitle: 'Alerts right on time',
       exactBody: 'To get each dose alert at the exact minute even in sleep mode, allow the "Alarms & reminders" permission for this app on the next screen.',
@@ -282,6 +328,8 @@ const STRINGS = {
       notifSettings: 'Notification settings',
       appDetails: 'App settings',
       takenBtn: 'Taken',
+      takenSel: 'Taken (selected)',
+      pickOne: 'Select at least one medication',
       snoozeBtn: 'Snooze',
       skipBtn: 'Skip this dose',
       slideLabel: 'Slide to silence (it will ring again unless you confirm)',

@@ -29,6 +29,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 
@@ -90,7 +91,13 @@ public class AlarmService extends Service {
     }
 
     static void sendAction(Context c, String action, String key) {
-        Intent i = new Intent(c, AlarmService.class).setAction(action).putExtra("key", key == null ? "" : key);
+        sendAction(c, action, key, "");
+    }
+
+    static void sendAction(Context c, String action, String key, String ids) {
+        Intent i = new Intent(c, AlarmService.class).setAction(action)
+                .putExtra("key", key == null ? "" : key)
+                .putExtra("ids", ids == null ? "" : ids);
         c.startService(i);
     }
 
@@ -135,8 +142,8 @@ public class AlarmService extends Service {
             } else {
                 AlarmItem target = find(key);
                 if (target != null) {
-                    if (ACT_TAKEN.equals(action)) complete(target, "taken");
-                    else if (ACT_SKIP.equals(action)) complete(target, "skipped");
+                    if (ACT_TAKEN.equals(action)) resolveItems(target, intent.getStringExtra("ids"), "taken");
+                    else if (ACT_SKIP.equals(action)) resolveItems(target, "", "skipped");
                     else if (ACT_SNOOZE.equals(action)) snooze(target);
                 }
             }
@@ -154,11 +161,34 @@ public class AlarmService extends Service {
 
     /* ---------------- إجراءات المريض ---------------- */
 
-    private void complete(AlarmItem item, String status) {
-        AlarmStore.log(this, "action: " + status + " " + item.key);
+    /**
+     * يسجّل حالة الأدوية المحدّدة (ids مفصولة بفاصلة، أو الكل إن كانت فارغة).
+     * الأدوية غير المحدّدة تبقى وتعود في المنبّه بعد مدة التكرار.
+     */
+    private void resolveItems(AlarmItem item, String idsCsv, String status) {
+        AlarmStore.log(this, "action: " + status + " " + item.key + " ids=" + idsCsv);
+        List<String> ids = (idsCsv == null || idsCsv.isEmpty()) ? null : Arrays.asList(idsCsv.split(","));
+        JSONArray all = item.itemsOrSingle();
+        JSONArray rest = new JSONArray();
+        for (int i = 0; i < all.length(); i++) {
+            JSONObject it = all.optJSONObject(i);
+            if (it == null) continue;
+            String id = it.optString("medId", "");
+            boolean chosen = ids == null || ids.contains(id);
+            if (chosen) {
+                if ("dose".equals(item.type)) AlarmStore.addResult(this, item, id, status);
+            } else {
+                rest.put(it);
+            }
+        }
         remove(item.key);
         AlarmStore.removeNativeFor(this, item.key);
-        if ("dose".equals(item.type)) AlarmStore.addResult(this, item, status);
+        if (rest.length() > 0 && "dose".equals(item.type)) {
+            AlarmItem remaining = AlarmItem.fromJson(item.toJson());
+            remaining.items = rest;
+            int repeatMin = Math.max(1, AlarmStore.config(this).optInt("repeatMin", 5));
+            AlarmStore.addFollowUp(this, remaining, repeatMin * 60000L, item.n);
+        }
         AlarmStore.armNext(this);
     }
 
@@ -341,6 +371,7 @@ public class AlarmService extends Service {
                 .setSmallIcon(R.drawable.ic_stat_pill)
                 .setContentTitle(title)
                 .setContentText(text)
+                .setStyle(new NotificationCompat.BigTextStyle().bigText(text))
                 .setCategory(NotificationCompat.CATEGORY_ALARM)
                 .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)

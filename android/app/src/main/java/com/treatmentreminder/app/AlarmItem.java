@@ -1,12 +1,14 @@
 package com.treatmentreminder.app;
 
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-/** تنبيه جرعة واحد (أو تكرار/تأجيل له). */
+/** منبّه جرعة (قد يضم عدة أدوية في نفس الموعد)، أو تكرار/تأجيل له. */
 final class AlarmItem {
     int id;
     long at;
+    /** معرّف المجموعة، مثل grp:2026-11-24:08:00 */
     String key = "";
     String type = "dose";
     String date = "";
@@ -14,6 +16,8 @@ final class AlarmItem {
     String time = "";
     String title = "";
     String body = "";
+    /** الأدوية داخل المنبّه: [{medId, name, dose}] */
+    JSONArray items = null;
     /** "js" = جاء من واجهة التطبيق، "native" = تكرار/تأجيل أنشأه الجزء الأصلي */
     String src = "js";
     /** رقم مرّة التكرار */
@@ -33,6 +37,7 @@ final class AlarmItem {
             o.put("body", body);
             o.put("src", src);
             o.put("n", n);
+            if (items != null) o.put("items", items);
         } catch (JSONException ignored) { }
         return o;
     }
@@ -49,6 +54,7 @@ final class AlarmItem {
         a.body = o.optString("body", "");
         a.src = o.optString("src", "js");
         a.n = o.optInt("n", 0);
+        a.items = o.optJSONArray("items");
         a.id = o.optInt("id", 0);
         if (a.id == 0) a.id = AlarmStore.idFor(a.key + "#" + a.at);
         return a;
@@ -61,5 +67,19 @@ final class AlarmItem {
         } catch (JSONException e) {
             return null;
         }
+    }
+
+    /** قائمة الأدوية؛ إن لم توجد (تنبيه قديم/اختبار) تُرجع عنصرًا واحدًا. */
+    JSONArray itemsOrSingle() {
+        if (items != null && items.length() > 0) return items;
+        JSONArray arr = new JSONArray();
+        try {
+            JSONObject it = new JSONObject();
+            it.put("medId", medId);
+            it.put("name", body);
+            it.put("dose", "");
+            arr.put(it);
+        } catch (JSONException ignored) { }
+        return arr;
     }
 }

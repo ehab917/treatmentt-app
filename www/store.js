@@ -47,6 +47,8 @@ const DEFAULT_STATE = {
     dailySummary: '20:00',
     snoozeMin: 10,
     alarmMode: true,
+    fontSize: 'medium',
+    stockAlertDays: 3,
     repeatMin: 5,
     repeatMax: 6,
     ringSec: 60,
@@ -138,8 +140,19 @@ function doseStatus(date, medId, time, graceMin) {
   return now.getTime() - due.getTime() >= grace * 60000 ? 'missed' : 'pending';
 }
 
+function adjustStock(medId, sign) {
+  const med = state.meds.find((m) => m.id === medId);
+  if (!med || med.stock == null) return;
+  const per = Number(med.perDose) || 1;
+  med.stock = Math.max(0, Math.round((Number(med.stock) + sign * per) * 100) / 100);
+  save();
+}
+
 function setDoseStatus(date, medId, time, status) {
   const existing = getLog(date, medId, time);
+  const wasTaken = !!existing && existing.status === 'taken';
+  if (!wasTaken && status === 'taken') adjustStock(medId, -1);
+  if (wasTaken && status !== 'taken') adjustStock(medId, +1);
   if (existing) {
     if (status === null) logs = logs.filter((l) => l !== existing);
     else { existing.status = status; existing.ts = Date.now(); }
@@ -172,6 +185,12 @@ function expectedDoses(date) {
   return out.sort((a, b) => a.time.localeCompare(b.time));
 }
 
+function toStock(v) {
+  if (v === '' || v === null || v === undefined) return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
 function addMed(data) {
   const med = {
     id: uid(),
@@ -185,6 +204,8 @@ function addMed(data) {
     endDate: data.endDate || '',
     color: data.color || PALETTE[state.meds.length % PALETTE.length],
     paused: false,
+    stock: toStock(data.stock),
+    perDose: Number(data.perDose) > 0 ? Number(data.perDose) : 1,
     createdAt: Date.now()
   };
   state.meds.push(med);
@@ -205,10 +226,38 @@ function updateMed(id, data) {
     startDate: data.startDate || med.startDate,
     endDate: data.endDate === undefined ? med.endDate : data.endDate,
     color: data.color || med.color,
-    paused: data.paused === undefined ? med.paused : !!data.paused
+    paused: data.paused === undefined ? med.paused : !!data.paused,
+    stock: data.stock === undefined ? med.stock : toStock(data.stock),
+    perDose: data.perDose === undefined ? (med.perDose || 1) : (Number(data.perDose) > 0 ? Number(data.perDose) : 1)
   });
   save();
   return med;
+}
+
+function refillMed(id, qty) {
+  const med = state.meds.find((m) => m.id === id);
+  const n = Number(qty);
+  if (!med || !(n > 0)) return null;
+  med.stock = (med.stock == null ? 0 : Number(med.stock)) + n;
+  save();
+  return med;
+}
+
+/** كم يومًا يكفي المخزون الحالي (null إن لم يُحدَّد مخزون) */
+function stockDaysLeft(med) {
+  if (!med || med.stock == null) return null;
+  const perDay = (Number(med.perDose) || 1) * Math.max(1, (med.times || []).length);
+  return Math.floor(Number(med.stock) / perDay);
+}
+
+/** الأدوية التي قاربت على النفاد (تكفي أقل من أو تساوي عتبة الأيام) */
+function lowStockMeds() {
+  const limit = Number(state.settings.stockAlertDays);
+  const days = Number.isFinite(limit) ? limit : 3;
+  return state.meds.filter((m) => {
+    if (m.paused || m.stock == null) return false;
+    return stockDaysLeft(m) <= days;
+  });
 }
 
 function deleteMed(id) {
@@ -480,7 +529,7 @@ export {
   getState, save, subscribe, loadState,
   doseKey, getLog, doseStatus, setDoseStatus, clearAllLogs,
   medActiveOn, activeMeds, expectedDoses,
-  addMed, updateMed, deleteMed, toggleMedPaused,
+  addMed, updateMed, deleteMed, toggleMedPaused, refillMed, stockDaysLeft, lowStockMeds,
   addAppt, updateAppt, setApptStatus, deleteAppt, apptDateTime, apptNotifyTime, upcomingAppts,
   dayStats, rangeStats, perMedStats, streakInfo, heatmapData,
   updateSettings, exportPayload, importPayload, buildICS, resetAll

@@ -14,7 +14,6 @@ import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.PowerManager;
-import android.provider.AlarmClock;
 import android.provider.Settings;
 
 import androidx.activity.result.ActivityResult;
@@ -31,7 +30,6 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
-import java.util.Calendar;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -90,7 +88,7 @@ public class DeviceSettingsPlugin extends Plugin {
         stopPreview();
         try {
             String s = call.getString("uri");
-            Uri uri = (s == null || s.isEmpty()) ? Settings.System.DEFAULT_NOTIFICATION_URI : Uri.parse(s);
+            Uri uri = (s == null || s.isEmpty()) ? RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM) : Uri.parse(s);
             previewRingtone = RingtoneManager.getRingtone(getContext(), uri);
             if (previewRingtone != null) previewRingtone.play();
         } catch (Exception ignored) { }
@@ -249,7 +247,21 @@ public class DeviceSettingsPlugin extends Plugin {
             }
             List<AlarmItem> keep = new ArrayList<>();
             for (AlarmItem a : AlarmStore.load(c)) {
-                if ("native".equals(a.src) && !done.contains(a.key)) keep.add(a);
+                if (!"native".equals(a.src)) continue;
+                if (a.items != null && a.items.length() > 0) {
+                    JSONArray rest = new JSONArray();
+                    for (int k = 0; k < a.items.length(); k++) {
+                        JSONObject it = a.items.optJSONObject(k);
+                        if (it == null) continue;
+                        String mk = "dose:" + a.date + ":" + it.optString("medId") + ":" + a.time;
+                        if (!done.contains(mk)) rest.put(it);
+                    }
+                    if (rest.length() == 0) continue;
+                    a.items = rest;
+                    keep.add(a);
+                } else if (!done.contains(a.key)) {
+                    keep.add(a);
+                }
             }
             JSArray arr = call.getArray("alarms");
             if (arr != null) {
@@ -385,42 +397,6 @@ public class DeviceSettingsPlugin extends Plugin {
     @PluginMethod
     public void clearLog(PluginCall call) {
         AlarmStore.clearLog(getContext());
-        call.resolve();
-    }
-
-    /* ---------------- منبّه تطبيق الساعة الأصلي في الهاتف ---------------- */
-    @PluginMethod
-    public void setSystemAlarm(PluginCall call) {
-        try {
-            int hour = call.getInt("hour", 8);
-            int minute = call.getInt("minute", 0);
-            String label = call.getString("label", "");
-            boolean daily = Boolean.TRUE.equals(call.getBoolean("daily", true));
-            Intent i = new Intent(AlarmClock.ACTION_SET_ALARM);
-            i.putExtra(AlarmClock.EXTRA_HOUR, hour);
-            i.putExtra(AlarmClock.EXTRA_MINUTES, minute);
-            i.putExtra(AlarmClock.EXTRA_MESSAGE, label);
-            i.putExtra(AlarmClock.EXTRA_VIBRATE, true);
-            i.putExtra(AlarmClock.EXTRA_SKIP_UI, true);
-            if (daily) {
-                ArrayList<Integer> days = new ArrayList<>();
-                for (int d = Calendar.SUNDAY; d <= Calendar.SATURDAY; d++) days.add(d);
-                i.putExtra(AlarmClock.EXTRA_DAYS, days);
-            }
-            String ring = call.getString("ringtone");
-            if (ring != null && ring.startsWith("content://")) i.putExtra(AlarmClock.EXTRA_RINGTONE, ring);
-            launch(i);
-            call.resolve();
-        } catch (Exception e) {
-            call.reject(String.valueOf(e.getMessage()));
-        }
-    }
-
-    @PluginMethod
-    public void openSystemAlarms(PluginCall call) {
-        try {
-            launch(new Intent(AlarmClock.ACTION_SHOW_ALARMS));
-        } catch (Exception ignored) { }
         call.resolve();
     }
 

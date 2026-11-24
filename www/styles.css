@@ -75,10 +75,10 @@ html, body {
   background: var(--bg);
   color: var(--text);
   font-family: "Noto Sans Arabic", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
-  font-size: 16px;
   line-height: 1.55;
   overscroll-behavior-y: none;
 }
+body { font-size: 1rem; }
 
 body { min-height: 100dvh; }
 
@@ -516,3 +516,85 @@ input[type="range"] { width: 100%; accent-color: var(--brand); }
 @media (max-width: 700px) {
   #minimax-floating-ball { display: none !important; }
 }
+
+
+/* ==========================================================
+   تحسينات v1.6: تباين وحدود أوضح + وضع داكن أفضل
+   ========================================================== */
+:root {
+  --border: #cfdcd8;
+  --border-strong: #a9bdb7;
+  --text: #0f1f1b;
+  --muted: #566b65;
+  --shadow: 0 1px 3px rgba(16, 48, 40, .10), 0 8px 24px rgba(16, 48, 40, .07);
+}
+:root[data-theme="dark"] {
+  --bg: #0a100f;
+  --card: #16221f;
+  --text: #f2f8f6;
+  --muted: #a9beb8;
+  --border: #35514a;
+  --border-strong: #4d6f66;
+  --brand: #22c7a8;
+  --brand-soft: #123a31;
+  --on-soft: #5fe3c8;
+  --danger-soft: #42201f;
+  --warn-soft: #43301a;
+  --ok-soft: #123a2c;
+  --info-soft: #1a2a48;
+  --shadow: 0 0 0 1px rgba(255, 255, 255, .03), 0 8px 24px rgba(0, 0, 0, .45);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0a100f;
+    --card: #16221f;
+    --text: #f2f8f6;
+    --muted: #a9beb8;
+    --border: #35514a;
+    --border-strong: #4d6f66;
+    --brand: #22c7a8;
+    --brand-soft: #123a31;
+    --on-soft: #5fe3c8;
+    --danger-soft: #42201f;
+    --warn-soft: #43301a;
+    --ok-soft: #123a2c;
+    --info-soft: #1a2a48;
+    --shadow: 0 0 0 1px rgba(255, 255, 255, .03), 0 8px 24px rgba(0, 0, 0, .45);
+  }
+}
+
+/* بطاقات بحدود واضحة */
+.card, .dose, .med-card, .tone-row, .appt-card {
+  border: 1.5px solid var(--border);
+}
+.setting { border-bottom: 1.5px solid var(--border); padding-block: 13px; }
+.setting .txt b { font-size: .95rem; font-weight: 700; }
+.setting .txt span { font-size: .8rem; }
+
+/* عناوين الأقسام أبرز بشريط ملوّن */
+.section-head h2 {
+  font-size: 1.02rem; font-weight: 800;
+  padding-inline-start: 10px;
+  border-inline-start: 4px solid var(--brand);
+}
+
+/* حقول الإدخال والتسميات أوضح */
+input[type="text"], input[type="number"], input[type="date"], input[type="time"], select, textarea {
+  border: 1.5px solid var(--border-strong);
+}
+label.fld > span { font-size: .86rem; font-weight: 700; color: var(--text); }
+.chip, .time-pill { border: 1px solid var(--border-strong); }
+.seg { border: 1.5px solid var(--border); }
+
+/* الأزرار: حدود واضحة للأزرار الثانوية */
+.btn.ghost, .btn.soft { border: 1.5px solid var(--border-strong); }
+.btn.sm { font-size: .88rem; }
+
+/* مخزون الدواء */
+.stock-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; font-size: .86rem; }
+.stock-line.low { color: var(--warn); font-weight: 700; }
+.stock-line.empty { color: var(--danger); font-weight: 700; }
+
+/* حجم الخط يتحكم به الإعداد (صغير/متوسط/كبير) */
+html { font-size: calc(16px * var(--fs, 1.08)); }
+.btn.soft { border-color: color-mix(in srgb, var(--brand) 40%, var(--border)); }

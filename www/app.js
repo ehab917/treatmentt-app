@@ -148,6 +148,13 @@ function applyTheme() {
   else root.setAttribute('data-theme', theme);
 }
 
+/* ================= حجم الخط ================= */
+const FONT_SCALES = { small: 1, medium: 1.08, large: 1.2 };
+function applyFontSize() {
+  const k = S.getState().settings.fontSize || 'medium';
+  document.documentElement.style.setProperty('--fs', String(FONT_SCALES[k] || FONT_SCALES.medium));
+}
+
 /* ================= النغمة والاهتزاز ================= */
 const TONE_LABELS = {
   none: 'toneNone', beep: 'toneBeep', bell: 'toneBell', chime: 'toneChime',
@@ -162,9 +169,25 @@ function toneLabel(name) { return t('sound.' + (TONE_LABELS[name] || 'toneNone')
 function vibLabel(name) { return t('sound.' + (VIB_LABELS[name] || 'vibNone')); }
 
 /** تشغيل النغمة المختارة + الاهتزاز */
+let phoneToneTimer = null;
+function playPhoneTone() {
+  const DS = NATIVE.DS();
+  const s = S.getState().settings;
+  if (!DS) return;
+  DS.playRingtone({ uri: s.sysToneUri || '' }).catch(() => {});
+  clearTimeout(phoneToneTimer);
+  phoneToneTimer = setTimeout(() => { DS.stopRingtone().catch(() => {}); }, 4000);
+}
+
 function alertSound() {
   const s = S.getState().settings;
   if (!s.sound) return;
+  if (NATIVE.isNative && NATIVE.DS()) {
+    playPhoneTone();
+    const patN = (s.vibPattern && s.vibPattern.length) ? s.vibPattern : (SOUND.VIB_PATTERNS[s.vibration] || []);
+    SOUND.vibrate(patN);
+    return;
+  }
   SOUND.playTone(s.tone || 'chime', s.volume == null ? 0.8 : s.volume, s.customTone || '');
   const pat = (s.vibPattern && s.vibPattern.length) ? s.vibPattern
     : (SOUND.VIB_PATTERNS[s.vibration] || []);
@@ -174,8 +197,8 @@ function alertSound() {
 /** نغمة تجريبية من الإعدادات */
 function previewTone(name) {
   const s = S.getState().settings;
-  if (NATIVE.isNative && name === 'system' && NATIVE.DS()) {
-    NATIVE.DS().playRingtone({ uri: s.sysToneUri || '' }).catch(() => {});
+  if (NATIVE.isNative && NATIVE.DS()) {
+    playPhoneTone();
     return;
   }
   const key = name === 'custom' ? 'custom' : name;
@@ -231,6 +254,14 @@ function viewToday() {
     </div>
     ${ringSVG(stats.pct || 0)}
   </section>`;
+
+  S.lowStockMeds().forEach((m) => {
+    const out = Number(m.stock) <= 0;
+    html += `<div class="banner" style="display:flex;gap:8px;align-items:center;justify-content:space-between;background:var(--warn-soft);border:1.5px solid var(--warn)">
+      <span>⚠️ ${esc(out ? t('stock.outBanner', { name: medName(m) }) : t('stock.lowBanner', { name: medName(m), n: fmtNum(m.stock), d: S.stockDaysLeft(m) }))}</span>
+      <button type="button" class="btn sm primary" data-act="refill-med" data-id="${m.id}">＋ ${esc(t('stock.refillBtn'))}</button>
+    </div>`;
+  });
 
   if (!doses.length) {
     html += `<section class="card empty">
@@ -302,6 +333,17 @@ function findNextDose() {
   return null;
 }
 
+function fmtNum(n) { return String(Math.round(Number(n) * 100) / 100); }
+
+function stockLine(med) {
+  if (med.stock == null) return '';
+  const days = S.stockDaysLeft(med);
+  const limit = Number(S.getState().settings.stockAlertDays) || 3;
+  const cls = Number(med.stock) <= 0 ? 'empty' : (days <= limit ? 'low' : '');
+  const icon = cls ? '⚠️' : '📦';
+  return `<div class="stock-line ${cls}">${icon} ${esc(t('stock.left'))}: ${esc(fmtNum(med.stock))} ${esc(t('stock.pillsShort'))} · ${esc(t('stock.lasts'))} ~${days} ${esc(t('stock.daysShort'))}</div>`;
+}
+
 function medCard(med) {
   const st = S.streakInfo();
   const chips = (med.times || []).map((tm) => `<span class="time-pill">${esc(fmtTime(tm))}</span>`).join('');
@@ -313,10 +355,12 @@ function medCard(med) {
         ${active ? `<span class="chip ok">${esc(t('meds.active'))}</span>` : `<span class="chip muted">${esc(t('meds.paused'))}</span>`}
       </div>
       <div class="med-sub">${esc(medDoseText(med)) || '—'}</div>
+      ${stockLine(med)}
       <div class="med-times">${chips || `<span class="chip muted">${esc(t('meds.noTimes'))}</span>`}</div>
       ${med.notes ? `<div class="med-notes">⚠️ ${esc(med.notes)}</div>` : ''}
       <div class="med-actions">
         <button class="btn sm" data-act="edit-med" data-id="${med.id}">${esc(t('common.edit'))}</button>
+        ${med.stock != null ? `<button class="btn sm soft" data-act="refill-med" data-id="${med.id}">＋ ${esc(t('stock.refillBtn'))}</button>` : ''}
         <button class="btn sm ghost" data-act="toggle-med" data-id="${med.id}">${esc(active ? t('meds.pause') : t('meds.resume'))}</button>
         <button class="btn sm danger" data-act="delete-med" data-id="${med.id}">${esc(t('common.delete'))}</button>
       </div>
@@ -516,6 +560,12 @@ function viewSettings() {
       </div>
     </div>
     <div class="setting">
+      <div class="txt"><b>${esc(t('ui.fontSize'))}</b><span>${esc(t('ui.fontHint'))}</span></div>
+      <div class="ctl seg" id="font-seg">
+        ${['small', 'medium', 'large'].map((k) => `<button data-act="set-font" data-size="${k}" class="${(s.fontSize || 'medium') === k ? 'active' : ''}">${esc(t('ui.font_' + k))}</button>`).join('')}
+      </div>
+    </div>
+    <div class="setting">
       <div class="txt"><b>${esc(t('settings.language'))}</b></div>
       <div class="ctl seg" id="lang-seg">
         <button data-act="set-lang" data-lang="ar" class="${getLang() === 'ar' ? 'active' : ''}">${esc(t('settings.arabic'))}</button>
@@ -584,6 +634,7 @@ function viewSettings() {
 
   html += `<section class="card">
     <div class="section-head"><h2>${esc(t('sound.title'))}</h2></div>
+    ${NATIVE.isNative ? '' : `
     <div class="setting" style="border-bottom:none;padding-bottom:2px">
       <div class="txt"><b>${esc(t('sound.appTone'))}</b><span>${esc(t('sound.appToneHint'))}</span></div>
     </div>
@@ -594,6 +645,7 @@ function viewSettings() {
         <input type="range" id="opt-volume" min="0" max="100" step="5" value="${Math.round((s.volume == null ? 0.8 : s.volume) * 100)}">
       </div>
     </div>
+`}
     <div class="setting">
       <div class="txt"><b>${esc(t('sound.vibration'))}</b></div>
       <div class="ctl">
@@ -604,7 +656,7 @@ function viewSettings() {
     </div>
     ${NATIVE.isNative ? `<div class="setting">
       <div class="txt"><b>${esc(t('sound.systemPick'))}</b><span>${esc(s.sysToneName || t('sound.systemDefault'))}</span></div>
-      <div class="ctl"><button type="button" class="btn sm primary" data-act="pick-system-tone">${esc(t('sound.systemBtn'))}</button></div>
+      <div class="ctl" style="display:flex;gap:6px"><button type="button" class="btn sm ghost" data-act="preview-tone" data-tone="system">▶</button><button type="button" class="btn sm primary" data-act="pick-system-tone">${esc(t('sound.systemBtn'))}</button></div>
     </div>
     <p class="tiny muted" style="margin:4px 0 0">${esc(t('sound.systemHint'))}</p>` : ''}
     ${NATIVE.isNative ? '' : `
@@ -636,7 +688,7 @@ function viewSettings() {
   </section>`;
 
   html += `<section class="card">
-    <div class="section-head"><h2>${esc(t('settings.about'))}</h2><span class="count">${esc(t('settings.version'))} 1.5.0</span></div>
+    <div class="section-head"><h2>${esc(t('settings.about'))}</h2><span class="count">${esc(t('settings.version'))} 1.6.0</span></div>
     <p class="muted small">${esc(t('settings.privacy'))}</p>
   </section>`;
 
@@ -701,6 +753,12 @@ function medForm(med) {
           ${['tablet', 'capsule', 'injection', 'syrup', 'drops', 'cream', 'inhaler', 'suppository', 'other'].map((key) => `
             <option value="${key}" ${(m.form === key || (!m.form && key === 'tablet')) ? 'selected' : ''}>${esc(t('meds.forms.' + key))}</option>`).join('')}
         </select></label>
+    </div>
+    <div class="grid-2">
+      <label class="fld"><span>${esc(t('stock.have'))} (${esc(t('common.optional'))})</span>
+        <input type="number" name="stock" min="0" step="1" inputmode="decimal" value="${m.stock == null ? '' : esc(m.stock)}"></label>
+      <label class="fld"><span>${esc(t('stock.perDose'))}</span>
+        <input type="number" name="perDose" min="0.25" step="0.25" inputmode="decimal" value="${esc(m.perDose || 1)}"></label>
     </div>
     <div class="fld"><span>${esc(t('meds.times'))}</span>
       <div id="times-editor" style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px"></div>
@@ -1143,33 +1201,6 @@ async function nativeShowDiagnostics() {
   });
 }
 
-/** يضيف مواعيد الأدوية كمنبّهات يومية في تطبيق الساعة الأصلي بالهاتف (نفس صلاحيات المنبّه الأصلي) */
-async function nativeSyncToClock() {
-  const DS = NATIVE.DS();
-  if (!DS) return;
-  const s = S.getState();
-  const byTime = {};
-  s.meds.filter((m) => !m.paused).forEach((m) => {
-    (m.times || []).forEach((tm) => { (byTime[tm] = byTime[tm] || []).push(medName(m)); });
-  });
-  const times = Object.keys(byTime).sort();
-  if (!times.length) { toast(t('native.syncClockNone')); return; }
-  const ok = await confirmDialog(t('native.syncClockTitle'), `${t('native.syncClockBody')} (${times.length})`, t('native.syncClockOk'));
-  if (!ok) return;
-  const ring = s.settings.tone === 'system' ? (s.settings.sysToneUri || '') : '';
-  let done = 0;
-  for (const tm of times) {
-    const [hh, mm] = tm.split(':').map(Number);
-    try {
-      await DS.setSystemAlarm({ hour: hh, minute: mm, label: '💊 ' + byTime[tm].join('، '), daily: true, ringtone: ring });
-      done++;
-    } catch (e) { /* ignore a failed one and continue */ }
-    await new Promise((r) => setTimeout(r, 1200));
-  }
-  toast(done ? `${t('native.syncClockDone')} (${done})` : t('toast.error'));
-  if (done) { try { await DS.openSystemAlarms(); } catch (e) { /* ignore */ } }
-}
-
 /** فتح منتقي نغمات الهاتف الأصلي وحفظ الاختيار */
 async function pickSystemTone() {
   const DS = NATIVE.DS();
@@ -1262,10 +1293,6 @@ function nativeReliabilityCard() {
       <button type="button" class="btn soft" data-act="native-diagnose">🔍 ${esc(t('native.diagBtn'))}</button>
       <button type="button" class="btn soft" data-act="native-test-2min">⏱ ${esc(t('native.test2min'))}</button>
     </div>
-    <div class="btn-row grow" style="margin-top:8px">
-      <button type="button" class="btn soft" data-act="native-sync-clock">⏰ ${esc(t('native.syncClockBtn'))}</button>
-      <button type="button" class="btn ghost" data-act="native-open-clock">${esc(t('native.openClockBtn'))}</button>
-    </div>
   </section>`;
 }
 
@@ -1294,6 +1321,14 @@ function nativeEvents() {
     const ts = S.apptNotifyTime(a).getTime();
     if (ts > now) events.push({ key: `appt:${a.id}`, type: 'appt', ts, appt: a });
   });
+  const low = S.lowStockMeds();
+  if (low.length) {
+    for (let i = 0; i < 3; i++) {
+      const date = S.addDaysISO(today, i);
+      const ts = doseTs(date, '09:00');
+      if (ts > now) events.push({ key: `stock:${date}`, type: 'stock', ts, low });
+    }
+  }
   const hhmm = st.settings.dailySummary;
   if (hhmm && S.isValidTime(hhmm)) {
     for (let i = 0; i < 3; i++) {
@@ -1329,6 +1364,12 @@ function nativeBuild(ev, used, doseCh, genCh) {
       extra: { type: 'appt', apptId: a.id, screen: 'appts' }
     };
   }
+  if (ev.type === 'stock') {
+    const parts = ev.low.map((m) => (Number(m.stock) <= 0
+      ? t('stock.outShort', { name: medName(m) })
+      : `${medName(m)}: ${fmtNum(m.stock)} ${t('stock.pillsShort')} (~${S.stockDaysLeft(m)} ${t('stock.daysShort')})`));
+    return { ...base, title: t('stock.notifTitle'), body: parts.join('، '), channelId: genCh.id, extra: { type: 'stock', screen: 'meds' } };
+  }
   /* الملخص اليومي: اليوم نعرف العدد المتبقي، وللأيام القادمة نص عام */
   let body = t('notif.summaryGeneric');
   if (ev.date === S.todayISO()) {
@@ -1341,15 +1382,8 @@ function nativeBuild(ev, used, doseCh, genCh) {
 
 function nativeToneInfo() {
   const s = S.getState().settings;
-  const tone = s.sound ? (s.tone || 'chime') : 'none';
   const pat = (s.vibPattern && s.vibPattern.length) ? s.vibPattern : (SOUND.VIB_PATTERNS[s.vibration] || []);
-  const silent = tone === 'none';
-  let uri = '';
-  if (tone === 'system') uri = s.sysToneUri || '';
-  else if (!silent && tone !== 'custom' && Object.prototype.hasOwnProperty.call(SOUND.TONES, tone)) {
-    uri = `android.resource://${NATIVE_PKG}/raw/tone_${tone}`;
-  }
-  return { silent, uri, pattern: pat.slice() };
+  return { silent: !s.sound, uri: s.sysToneUri || '', pattern: pat.slice() };
 }
 
 /** إعدادات المنبّه الأصلي: النغمة، التكرار، ونصوص شاشة المنبّه */
@@ -1364,6 +1398,8 @@ function nativeAlarmConfig() {
     snoozeMin: snooze,
     labels: {
       taken: '✅  ' + t('native.takenBtn'),
+      takenSel: '✅  ' + t('native.takenSel'),
+      pickOne: t('native.pickOne'),
       snooze: `⏰  ${t('native.snoozeBtn')} ${snooze} ${t('native.minShort')}`,
       skip: t('native.skipBtn'),
       slide: t('native.slideLabel'),
@@ -1371,6 +1407,29 @@ function nativeAlarmConfig() {
       rtl: getLang() === 'ar'
     }
   };
+}
+
+/** أدوية نفس الموعد = منبّه واحد يعرضها كلها ويُسجَّل كل دواء على حدة */
+function nativeGroupAlarms(events) {
+  const groups = new Map();
+  events.filter((e) => e.type === 'dose' && !e.key.endsWith(':snz')).forEach((ev) => {
+    const gk = `${ev.date}|${ev.time}`;
+    if (!groups.has(gk)) groups.set(gk, { at: ev.ts, date: ev.date, time: ev.time, list: [] });
+    groups.get(gk).list.push(ev);
+  });
+  return Array.from(groups.values()).map((g) => {
+    const items = g.list.map((ev) => ({
+      medId: ev.medId,
+      name: medName(ev.med),
+      dose: ev.med.dose ? `${ev.med.dose} ${t('meds.unit')}` : ''
+    }));
+    return {
+      at: g.at, key: `grp:${g.date}:${g.time}`, type: 'dose', date: g.date, time: g.time,
+      medId: items[0].medId, title: t('notif.doseTitle'),
+      body: items.map((i) => (i.dose ? `${i.name} — ${i.dose}` : i.name)).join('\n'),
+      items
+    };
+  });
 }
 
 function nativeAlarmFromEvent(ev) {
@@ -1420,37 +1479,22 @@ function strHash(str) {
 /** ينشئ (أو يعيد استخدام) قناة الجرعات بالنغمة والاهتزاز المختارين ويعيد معرّفها */
 async function nativeDoseChannelId() {
   const DS = NATIVE.DS();
+  const info = nativeToneInfo();
+  const ar = getLang() === 'ar';
   if (!DS) {
-    const ch = nativeChannel('dose');
+    const ch = nativeChannel('general');
     await NATIVE.LN().createChannel(ch);
     return ch.id;
   }
   const s = S.getState().settings;
-  const ar = getLang() === 'ar';
-  const tone = s.sound ? (s.tone || 'chime') : 'none';
-  const pat = (s.vibPattern && s.vibPattern.length) ? s.vibPattern : (SOUND.VIB_PATTERNS[s.vibration] || []);
-  const vibKey = pat.join('-') || 'n';
-  const silent = tone === 'none';
-  let uri = '';
-  let label = '';
-  let key = tone;
-  if (tone === 'system' || tone === 'custom') {
-    uri = tone === 'system' ? (s.sysToneUri || '') : '';
-    key = 'sys' + strHash(uri);
-    label = tone === 'system' && s.sysToneName ? s.sysToneName : (ar ? 'نغمة الهاتف الافتراضية' : 'Phone default');
-  } else if (!silent && Object.prototype.hasOwnProperty.call(SOUND.TONES, tone)) {
-    uri = `android.resource://${NATIVE_PKG}/raw/tone_${tone}`;
-    label = toneLabel(tone);
-  } else {
-    label = ar ? 'صامت' : 'Silent';
-  }
-  const id = `d2_${key}_${strHash(vibKey)}`;
+  const key = info.silent ? 'silent' : 'sys' + strHash(info.uri);
+  const id = `d3_${key}_${strHash(info.pattern.join('-') || 'n')}`;
   await DS.createChannel({
     id,
-    name: `${ar ? 'الجرعات' : 'Doses'} — ${label}`,
-    uri,
-    silent,
-    pattern: pat.length ? [0].concat(pat) : []
+    name: `${ar ? 'الجرعات' : 'Doses'} — ${info.silent ? (ar ? 'صامت' : 'Silent') : (s.sysToneName || (ar ? 'نغمة الهاتف' : 'Phone ringtone'))}`,
+    uri: info.uri,
+    silent: info.silent,
+    pattern: info.pattern.length ? [0].concat(info.pattern) : []
   });
   return id;
 }
@@ -1472,7 +1516,7 @@ async function nativeScheduleNow() {
     let alarmOk = false;
     if (DS && s.alarmMode !== false) {
       try {
-        const alarms = events.filter((e) => e.type === 'dose' && !e.key.endsWith(':snz')).map(nativeAlarmFromEvent);
+        const alarms = nativeGroupAlarms(events);
         await DS.scheduleAlarms({ alarms, doneKeys: nativeDoneKeys(), config: nativeAlarmConfig() });
         alarmOk = true;
       } catch (e) { console.warn('alarm schedule failed, falling back to notifications', e); }
@@ -1680,11 +1724,36 @@ function bindEvents() {
           times: formState.times.filter((x) => S.isValidTime(x)),
           startDate: fd.get('startDate') || S.todayISO(),
           endDate: fd.get('endDate') || '',
+          stock: fd.get('stock'),
+          perDose: fd.get('perDose'),
           color: formState.color
         };
         if (!data.nameAr.trim() && !data.nameEn.trim()) { toast(t('meds.medName')); return; }
         if (!data.times.length) { toast(t('meds.noTimes')); return; }
         if (formState.id) { S.updateMed(formState.id, data); } else { S.addMed(data); }
+        closeModal();
+        toast(t('toast.saved'));
+        render();
+        scheduleAll();
+        break;
+      }
+      case 'refill-med': {
+        const med = S.getState().meds.find((x) => x.id === act.dataset.id);
+        if (!med) break;
+        formState = { type: 'refill', id: med.id };
+        openModal({
+          title: `${t('stock.refillTitle')} — ${medName(med)}`,
+          body: `<label class="fld"><span>${esc(t('stock.refillAdd'))}</span>
+            <input type="number" name="qty" min="1" step="1" inputmode="decimal" required autofocus></label>`,
+          footer: `<button type="button" class="btn ghost" data-act="close-modal">${esc(t('common.cancel'))}</button>
+                   <button type="button" class="btn primary" data-act="save-refill">${esc(t('common.save'))}</button>`
+        });
+        break;
+      }
+      case 'save-refill': {
+        const qty = Number(new FormData($('#modal-form')).get('qty'));
+        if (!(qty > 0)) { toast(t('stock.refillAdd')); return; }
+        S.refillMed(formState.id, qty);
         closeModal();
         toast(t('toast.saved'));
         render();
@@ -1813,6 +1882,12 @@ function bindEvents() {
         if (ok) { S.resetAll(); toast(t('toast.deleted')); render(); scheduleAll(); }
         break;
       }
+      case 'set-font': {
+        S.updateSettings({ fontSize: act.dataset.size || 'medium' });
+        applyFontSize();
+        render();
+        break;
+      }
       case 'set-theme': {
         S.updateSettings({ theme: act.dataset.theme || 'auto' });
         applyTheme();
@@ -1903,12 +1978,6 @@ function bindEvents() {
           await DS.testAlarm({ delaySec: 120, title: t('notif.doseTitle'), body: t('settings.testNotificationBody'), config: nativeAlarmConfig() });
           toast(t('native.test2minStarted'));
         } catch (e) { toast(t('toast.error')); }
-        break;
-      }
-      case 'native-sync-clock': await nativeSyncToClock(); break;
-      case 'native-open-clock': {
-        const DS = NATIVE.DS();
-        if (DS) await DS.openSystemAlarms();
         break;
       }
       case 'native-fullscreen': {
@@ -2076,6 +2145,7 @@ function init() {
   const browserLang = (navigator.language || '').toLowerCase().startsWith('en') ? 'en' : 'ar';
   setLang(savedLang || browserLang);
   applyTheme();
+  applyFontSize();
   handleUrlParams();
   bindEvents();
   render();
