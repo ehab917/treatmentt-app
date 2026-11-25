@@ -33,8 +33,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * شاشة المنبّه: تظهر فوق القفل وتشعل الشاشة. تعرض كل أدوية هذا الموعد بمربعات اختيار،
- * وأزرار «أخذت المحدّد» و«تأجيل» و«تخطي»، وشريط سحب لإيقاف الصوت.
+ * شاشة المنبّه. التصميم:
+ *  - أعلى: العنوان والوقت (ثابتان).
+ *  - وسط: قائمة الأدوية داخل ScrollView، فتظهر كل الصور مهما كثرت الأدوية.
+ *  - أسفل: الأزرار وشريط السحب (ثابتان دائمًا ولا يختفيان).
+ * دواء واحد: صورة كبيرة بالمنتصف مع الاسم. عدة أدوية: بطاقات بمربعات اختيار.
  */
 public class AlarmActivity extends Activity {
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -85,26 +88,30 @@ public class AlarmActivity extends Activity {
         return t;
     }
 
-    private Button button(String text, int color) {
+    private GradientDrawable rounded(int fill, int radiusDp, int strokeColor) {
+        GradientDrawable g = new GradientDrawable();
+        g.setColor(fill);
+        g.setCornerRadius(dp(radiusDp));
+        if (strokeColor != 0) g.setStroke(dp(1.5f), strokeColor);
+        return g;
+    }
+
+    private Button button(String text, int color, int heightDp, float sp) {
         Button b = new Button(this);
         b.setText(text);
         b.setAllCaps(false);
-        b.setTextSize(20);
+        b.setTextSize(sp);
         b.setTextColor(Color.WHITE);
         b.setTypeface(Typeface.DEFAULT_BOLD);
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(color);
-        bg.setCornerRadius(dp(18));
-        b.setBackground(bg);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(64));
-        lp.topMargin = dp(12);
-        b.setLayoutParams(lp);
+        b.setBackground(rounded(color, 16, 0));
+        b.setMinHeight(0);
+        b.setMinimumHeight(0);
+        b.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(heightDp)));
         return b;
     }
 
-    private Button actionButton(String text, int color, final String action) {
-        Button b = button(text, color);
+    private Button actionButton(String text, int color, int heightDp, float sp, final String action) {
+        Button b = button(text, color, heightDp, sp);
         b.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -132,33 +139,39 @@ public class AlarmActivity extends Activity {
         takenLabel = AlarmService.labelOf(labels, "taken", "OK");
         takenSelLabel = AlarmService.labelOf(labels, "takenSel", takenLabel);
         pickOneLabel = AlarmService.labelOf(labels, "pickOne", "");
+        boolean rtl = labels == null || labels.optBoolean("rtl", true);
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setGravity(Gravity.CENTER_HORIZONTAL);
         root.setBackgroundColor(0xFF0B3D36);
-        root.setPadding(dp(24), dp(48), dp(24), dp(28));
-        boolean rtl = labels == null || labels.optBoolean("rtl", true);
+        root.setPadding(dp(18), dp(40), dp(18), dp(16));
         root.setLayoutDirection(rtl ? View.LAYOUT_DIRECTION_RTL : View.LAYOUT_DIRECTION_LTR);
 
-        tvTitle = label(20, 0xFFA7F3D0, true);
-        tvTime = label(60, Color.WHITE, true);
-        tvMore = label(16, 0xFFFCD34D, false);
+        /* ---------- أعلى (ثابت) ---------- */
+        tvTitle = label(18, 0xFFA7F3D0, true);
+        tvTime = label(52, Color.WHITE, true);
         root.addView(tvTitle);
         root.addView(tvTime);
 
+        /* ---------- وسط: قائمة قابلة للتمرير ---------- */
         listBox = new LinearLayout(this);
         listBox.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout.LayoutParams lb = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lb.topMargin = dp(16);
-        root.addView(listBox, lb);
+        listBox.setGravity(Gravity.CENTER_HORIZONTAL);
+        ScrollView sv = new ScrollView(this);
+        sv.setFillViewport(true);
+        sv.addView(listBox, new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        LinearLayout.LayoutParams svp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
+        svp.topMargin = dp(10);
+        svp.bottomMargin = dp(6);
+        root.addView(sv, svp);
+
+        tvMore = label(15, 0xFFFCD34D, false);
         root.addView(tvMore);
 
-        View spacer = new View(this);
-        root.addView(spacer, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
-
-        btnTaken = button(takenLabel, 0xFF16A34A);
+        /* ---------- أسفل (ثابت دائمًا) ---------- */
+        btnTaken = button(takenLabel, 0xFF16A34A, 60, 20);
         btnTaken.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -172,20 +185,33 @@ public class AlarmActivity extends Activity {
                 AlarmService.sendAction(AlarmActivity.this, AlarmService.ACT_TAKEN, a.key, ids);
             }
         });
+        LinearLayout.LayoutParams tp = (LinearLayout.LayoutParams) btnTaken.getLayoutParams();
+        tp.topMargin = dp(6);
         root.addView(btnTaken);
-        root.addView(actionButton(AlarmService.labelOf(labels, "snooze", "Snooze"), 0xFFD97706, AlarmService.ACT_SNOOZE));
-        root.addView(actionButton(AlarmService.labelOf(labels, "skip", "Skip"), 0xFF475569, AlarmService.ACT_SKIP));
 
-        TextView slideLabel = label(15, 0xFFCBD5E1, false);
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        Button snooze = actionButton(AlarmService.labelOf(labels, "snooze", "Snooze"), 0xFFD97706, 52, 15, AlarmService.ACT_SNOOZE);
+        Button skip = actionButton(AlarmService.labelOf(labels, "skip", "Skip"), 0xFF475569, 52, 15, AlarmService.ACT_SKIP);
+        LinearLayout.LayoutParams l1 = new LinearLayout.LayoutParams(0, dp(52), 1f);
+        l1.setMarginEnd(dp(8));
+        row.addView(snooze, l1);
+        row.addView(skip, new LinearLayout.LayoutParams(0, dp(52), 1f));
+        LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rp.topMargin = dp(10);
+        root.addView(row, rp);
+
+        TextView slideLabel = label(13, 0xFFCBD5E1, false);
         slideLabel.setText(AlarmService.labelOf(labels, "slide", ""));
         LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        sl.topMargin = dp(24);
+        sl.topMargin = dp(14);
         root.addView(slideLabel, sl);
 
         SeekBar slider = new SeekBar(this);
         slider.setMax(100);
-        slider.setPadding(dp(24), dp(12), dp(24), dp(12));
+        slider.setPadding(dp(20), dp(8), dp(20), dp(8));
         slider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar s, int p, boolean fromUser) { }
@@ -205,38 +231,31 @@ public class AlarmActivity extends Activity {
         root.addView(slider, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        ScrollView sv = new ScrollView(this);
-        sv.setFillViewport(true);
-        sv.addView(root, new ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        setContentView(sv);
+        setContentView(root);
     }
 
-    /** صورة الدواء (إن وُجدت) بحواف مستديرة */
-    private ImageView photoView(String medId, int sizeDp) {
-        try {
-            File f = AlarmStore.photoFile(this, medId);
-            if (!f.exists()) return null;
-            Bitmap bmp = BitmapFactory.decodeFile(f.getAbsolutePath());
-            if (bmp == null) return null;
+    /** صورة الدواء (إن وُجدت) بحواف مستديرة، وإلا مربع بأيقونة 💊 */
+    private View photoView(String medId, int sizeDp) {
+        File f = AlarmStore.photoFile(this, medId);
+        Bitmap bmp = f.exists() ? BitmapFactory.decodeFile(f.getAbsolutePath()) : null;
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(sizeDp), dp(sizeDp));
+        if (bmp != null) {
             ImageView iv = new ImageView(this);
             iv.setImageBitmap(bmp);
             iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            GradientDrawable bg = new GradientDrawable();
-            bg.setColor(0xFF134E45);
-            bg.setCornerRadius(dp(18));
-            iv.setBackground(bg);
+            iv.setBackground(rounded(0xFF134E45, 18, 0x66FFFFFF));
             iv.setClipToOutline(true);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(sizeDp), dp(sizeDp));
-            lp.setMarginEnd(dp(12));
             iv.setLayoutParams(lp);
             return iv;
-        } catch (Exception e) {
-            return null;
         }
+        TextView ph = label(sizeDp > 120 ? 64 : 30, Color.WHITE, false);
+        ph.setText("💊");
+        ph.setBackground(rounded(0xFF134E45, 18, 0x66FFFFFF));
+        ph.setLayoutParams(lp);
+        return ph;
     }
 
-    /** يعيد بناء قائمة الأدوية فقط عند تغيّرها (حتى لا تضيع اختيارات المريض). */
+    /** يعيد بناء القائمة فقط عند تغيّرها (حتى لا تضيع اختيارات المريض). */
     private void rebuildList(AlarmItem a) {
         JSONArray items = a.itemsOrSingle();
         String sig = a.key + "|" + items.toString();
@@ -245,34 +264,86 @@ public class AlarmActivity extends Activity {
         listBox.removeAllViews();
         boxes.clear();
         boxIds.clear();
-        for (int i = 0; i < items.length(); i++) {
+        int n = items.length();
+        boolean multi = n > 1;
+
+        for (int i = 0; i < n; i++) {
             JSONObject it = items.optJSONObject(i);
             if (it == null) continue;
+            String medId = it.optString("medId", "");
             String name = it.optString("name", "");
             String dose = it.optString("dose", "");
+
             CheckBox cb = new CheckBox(this);
-            cb.setText(dose.isEmpty() ? name : name + " — " + dose);
-            cb.setTextSize(items.length() > 1 ? 22 : 26);
-            cb.setTextColor(Color.WHITE);
-            cb.setTypeface(Typeface.DEFAULT_BOLD);
             cb.setChecked(true);
-            cb.setButtonTintList(ColorStateList.valueOf(Color.WHITE));
-            cb.setPadding(dp(8), dp(10), dp(8), dp(10));
-            cb.setVisibility(items.length() > 1 ? View.VISIBLE : View.VISIBLE);
-            LinearLayout row = new LinearLayout(this);
-            row.setOrientation(LinearLayout.HORIZONTAL);
-            row.setGravity(Gravity.CENTER_VERTICAL);
-            ImageView photo = photoView(it.optString("medId", ""), items.length() > 1 ? 88 : 140);
-            if (photo != null) row.addView(photo);
-            row.addView(cb, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-            LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            rlp.bottomMargin = dp(8);
-            listBox.addView(row, rlp);
             boxes.add(cb);
-            boxIds.add(it.optString("medId", ""));
+            boxIds.add(medId);
+
+            if (!multi) {
+                /* دواء واحد: صورة كبيرة بالمنتصف + الاسم + الجرعة */
+                LinearLayout one = new LinearLayout(this);
+                one.setOrientation(LinearLayout.VERTICAL);
+                one.setGravity(Gravity.CENTER_HORIZONTAL);
+                View photo = photoView(medId, 190);
+                one.addView(photo);
+                TextView tvName = label(28, Color.WHITE, true);
+                tvName.setText(name);
+                LinearLayout.LayoutParams np = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                np.topMargin = dp(14);
+                one.addView(tvName, np);
+                if (!dose.isEmpty()) {
+                    TextView tvDose = label(18, 0xFFA7F3D0, false);
+                    tvDose.setText(dose);
+                    one.addView(tvDose);
+                }
+                listBox.addView(one, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+                continue;
+            }
+
+            /* عدة أدوية: بطاقة لكل دواء (صورة + اسم + جرعة + مربع اختيار) */
+            LinearLayout card = new LinearLayout(this);
+            card.setOrientation(LinearLayout.HORIZONTAL);
+            card.setGravity(Gravity.CENTER_VERTICAL);
+            card.setPadding(dp(10), dp(10), dp(12), dp(10));
+            card.setBackground(rounded(0x26FFFFFF, 18, 0x44FFFFFF));
+            View photo = photoView(medId, n > 2 ? 72 : 88);
+            ((LinearLayout.LayoutParams) photo.getLayoutParams()).setMarginEnd(dp(12));
+            card.addView(photo);
+
+            LinearLayout texts = new LinearLayout(this);
+            texts.setOrientation(LinearLayout.VERTICAL);
+            TextView tvName = label(20, Color.WHITE, true);
+            tvName.setGravity(Gravity.START);
+            tvName.setText(name);
+            texts.addView(tvName);
+            if (!dose.isEmpty()) {
+                TextView tvDose = label(15, 0xFFA7F3D0, false);
+                tvDose.setGravity(Gravity.START);
+                tvDose.setText(dose);
+                texts.addView(tvDose);
+            }
+            card.addView(texts, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+            cb.setButtonTintList(ColorStateList.valueOf(Color.WHITE));
+            cb.setScaleX(1.35f);
+            cb.setScaleY(1.35f);
+            card.addView(cb, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            final CheckBox box = cb;
+            card.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    box.toggle();
+                }
+            });
+            LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            cp.bottomMargin = dp(10);
+            listBox.addView(card, cp);
         }
-        btnTaken.setText(items.length() > 1 ? takenSelLabel : takenLabel);
+        btnTaken.setText(multi ? takenSelLabel : takenLabel);
     }
 
     private void refresh() {

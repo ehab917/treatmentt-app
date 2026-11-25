@@ -613,3 +613,93 @@ html { font-size: calc(16px * var(--fs, 1.08)); }
 .rt-row.active { border-color: var(--brand); background: color-mix(in srgb, var(--brand) 12%, var(--card)); font-weight: 700; }
 .rt-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rt-play { color: var(--brand); }
+
+
+/* ==========================================================
+   v1.6.1: بطاقة دواء منظّمة + وضع داكن أوضح
+   ========================================================== */
+:root {
+  --seg-bg: color-mix(in srgb, var(--muted) 12%, transparent);
+  --seg-active-bg: var(--card);
+  --seg-active-fg: var(--text);
+  --input-bg: var(--card);
+  --switch-off: color-mix(in srgb, var(--muted) 30%, transparent);
+}
+:root[data-theme="dark"] {
+  --bg: #0e1816;
+  --card: #1a2b27;
+  --text: #f6fbf9;
+  --muted: #bccfc9;
+  --border: #44665f;
+  --border-strong: #6a958a;
+  --brand: #2dd4b0;
+  --brand-soft: #164a3f;
+  --on-soft: #86f2da;
+  --ok: #5ee6a8; --ok-soft: #14472f;
+  --warn: #fbbf24; --warn-soft: #4a3612;
+  --danger: #ff8a80; --danger-soft: #4d2321;
+  --info: #7cb2ff; --info-soft: #1c315a;
+  --seg-bg: #0f1b18;
+  --seg-active-bg: var(--brand);
+  --seg-active-fg: #04261f;
+  --input-bg: #101d1a;
+  --switch-off: #587068;
+  --on-brand: #04261f;
+  --hero-a: #139c82;
+  --hero-b: #0b5f4f;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1816;
+    --card: #1a2b27;
+    --text: #f6fbf9;
+    --muted: #bccfc9;
+    --border: #44665f;
+    --border-strong: #6a958a;
+    --brand: #2dd4b0;
+    --brand-soft: #164a3f;
+    --on-soft: #86f2da;
+    --ok: #5ee6a8; --ok-soft: #14472f;
+    --warn: #fbbf24; --warn-soft: #4a3612;
+    --danger: #ff8a80; --danger-soft: #4d2321;
+    --info: #7cb2ff; --info-soft: #1c315a;
+    --seg-bg: #0f1b18;
+    --seg-active-bg: var(--brand);
+    --seg-active-fg: #04261f;
+    --input-bg: #101d1a;
+    --switch-off: #587068;
+    --on-brand: #04261f;
+    --hero-a: #139c82;
+    --hero-b: #0b5f4f;
+  }
+}
+.seg { background: var(--seg-bg); }
+.seg button.active { background: var(--seg-active-bg); color: var(--seg-active-fg); font-weight: 800; }
+input[type="text"], input[type="number"], input[type="date"], input[type="time"], select, textarea { background: var(--input-bg); color: var(--text); }
+input::placeholder, textarea::placeholder { color: var(--muted); opacity: .75; }
+.switch .track { background: var(--switch-off); }
+.switch input:checked + .track { background: var(--brand); }
+.tabbar { border-top: 1.5px solid var(--border); }
+.btn.ghost { color: var(--text); }
+.chip { font-weight: 700; }
+
+/* بطاقة الدواء */
+.med-card { display: block; padding: 14px; border-inline-start: 6px solid var(--mc, var(--brand)); }
+.med-color, .med-card > .med-body { display: none; }
+.mc-head { display: flex; align-items: center; gap: 12px; }
+.mc-photo {
+  width: 62px; height: 62px; border-radius: 16px; object-fit: cover; flex: none;
+  border: 1.5px solid var(--border-strong); background: var(--brand-soft);
+  display: grid; place-items: center; font-size: 1.7rem;
+}
+.mc-info { flex: 1; min-width: 0; }
+.mc-name { font-weight: 800; font-size: 1.05rem; line-height: 1.3; overflow-wrap: anywhere; }
+.mc-sub { font-size: .84rem; color: var(--muted); margin-top: 2px; }
+.mc-head .chip { flex: none; align-self: flex-start; }
+.mc-times { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+.mc-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+.mc-actions.n4 { grid-template-columns: repeat(2, 1fr); }
+.mc-actions .btn { width: 100%; justify-content: center; text-align: center; padding: 10px 4px; font-size: .86rem; white-space: nowrap; }
+
+.btn.primary { color: var(--on-brand, #fff); font-weight: 800; }
+.hero { background: linear-gradient(140deg, var(--hero-a, var(--brand)) 0%, var(--hero-b, var(--brand-dark)) 100%); }

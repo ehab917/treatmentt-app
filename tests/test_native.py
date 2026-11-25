@@ -91,17 +91,6 @@ with sync_playwright() as p:
     }""")
     print('SNOOZE', sn)
     print('DS CHANNELS', page.evaluate("() => window.__calls.ds.map(c => c.id + ' | ' + c.uri + ' | pat=' + c.pattern.join(','))"))
-    # pick phone ringtone from settings
-    page.evaluate("() => { const d=document.querySelector('#modal'); if (d.open) d.close(); }")
-    page.click('[data-nav="settings"]'); page.wait_for_timeout(300)
-    print('has reliability card:', page.evaluate("() => !!document.querySelector('[data-act=native-battery]')"))
-    page.click('[data-act="pick-system-tone"]'); page.wait_for_timeout(1500)
-    print('after pick -> tone/name:', page.evaluate("() => { const s = window.__tr.store.getState().settings; return s.tone + ' / ' + s.sysToneName + ' / ' + s.sysToneUri; }"))
-    print('DS CHANNELS after pick', page.evaluate("() => window.__calls.ds.map(c => c.id + ' | ' + c.uri).slice(-1)"))
-    print('pending channels', page.evaluate("() => [...new Set(window.__pending().map(n=>n.channelId))]"))
-    page.click('[data-act="native-battery"]'); page.wait_for_timeout(300)
-    print('battery request called:', page.evaluate("() => !!window.__calls.battery"))
-    page.screenshot(path='/tmp/native_settings2.png', full_page=True)
     # change tone -> channel changes
     page.evaluate("() => window.__tr.store.updateSettings({ tone: 'marimba' })")
     page.wait_for_timeout(1500)

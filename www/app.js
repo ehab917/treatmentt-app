@@ -380,26 +380,27 @@ function stockLine(med) {
 }
 
 function medCard(med) {
-  const st = S.streakInfo();
   const chips = (med.times || []).map((tm) => `<span class="time-pill">${esc(fmtTime(tm))}</span>`).join('');
   const active = !med.paused;
-  return `<article class="med-card" data-med-card="${med.id}">
-    <div class="med-color" style="background:${esc(med.color)}"></div>
-    ${med.photo ? `<img class="med-thumb" src="${med.photo}" alt="">` : ''}
-    <div class="med-body">
-      <div class="med-title">${esc(medName(med))}
-        ${active ? `<span class="chip ok">${esc(t('meds.active'))}</span>` : `<span class="chip muted">${esc(t('meds.paused'))}</span>`}
+  const hasStock = med.stock != null;
+  const photo = med.photo ? `<img class="mc-photo" src="${med.photo}" alt="">` : '<div class="mc-photo">💊</div>';
+  return `<article class="med-card" data-med-card="${med.id}" style="--mc:${esc(med.color)}">
+    <div class="mc-head">
+      ${photo}
+      <div class="mc-info">
+        <div class="mc-name">${esc(medName(med))}</div>
+        <div class="mc-sub">${esc(medDoseText(med)) || '—'}</div>
       </div>
-      <div class="med-sub">${esc(medDoseText(med)) || '—'}</div>
-      ${stockLine(med)}
-      <div class="med-times">${chips || `<span class="chip muted">${esc(t('meds.noTimes'))}</span>`}</div>
-      ${med.notes ? `<div class="med-notes">⚠️ ${esc(med.notes)}</div>` : ''}
-      <div class="med-actions">
-        <button class="btn sm" data-act="edit-med" data-id="${med.id}">${esc(t('common.edit'))}</button>
-        ${med.stock != null ? `<button class="btn sm soft" data-act="refill-med" data-id="${med.id}">＋ ${esc(t('stock.refillBtn'))}</button>` : ''}
-        <button class="btn sm ghost" data-act="toggle-med" data-id="${med.id}">${esc(active ? t('meds.pause') : t('meds.resume'))}</button>
-        <button class="btn sm danger" data-act="delete-med" data-id="${med.id}">${esc(t('common.delete'))}</button>
-      </div>
+      ${active ? `<span class="chip ok">${esc(t('meds.active'))}</span>` : `<span class="chip muted">${esc(t('meds.paused'))}</span>`}
+    </div>
+    <div class="mc-times">${chips || `<span class="chip muted">${esc(t('meds.noTimes'))}</span>`}</div>
+    ${stockLine(med)}
+    ${med.notes ? `<div class="med-notes">⚠️ ${esc(med.notes)}</div>` : ''}
+    <div class="mc-actions ${hasStock ? 'n4' : ''}">
+      <button class="btn sm" data-act="edit-med" data-id="${med.id}">✏️ ${esc(t('common.edit'))}</button>
+      ${hasStock ? `<button class="btn sm soft" data-act="refill-med" data-id="${med.id}">＋ ${esc(t('stock.refillBtn'))}</button>` : ''}
+      <button class="btn sm ghost" data-act="toggle-med" data-id="${med.id}">${active ? '⏸️' : '▶️'} ${esc(active ? t('meds.pause') : t('meds.resume'))}</button>
+      <button class="btn sm danger" data-act="delete-med" data-id="${med.id}">🗑 ${esc(t('common.delete'))}</button>
     </div>
   </article>`;
 }
@@ -730,7 +731,7 @@ function viewSettings() {
   </section>`;
 
   html += `<section class="card">
-    <div class="section-head"><h2>${esc(t('settings.about'))}</h2><span class="count">${esc(t('settings.version'))} 1.6.1</span></div>
+    <div class="section-head"><h2>${esc(t('settings.about'))}</h2><span class="count">${esc(t('settings.version'))} 1.6.2</span></div>
     <p class="muted small">${esc(t('settings.privacy'))}</p>
   </section>`;
 

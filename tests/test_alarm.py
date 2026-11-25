@@ -92,7 +92,7 @@ with sync_playwright() as p:
     page.click('[data-act="save-med"]'); page.wait_for_timeout(900)
     r2 = page.evaluate("() => { const m = window.__tr.store.getState().meds.find(x => x.photo && !x.nameAr); return m ? { name: m.nameAr, photoKb: Math.round(m.photo.length / 1024), id: m.id } : null; }")
     print('med saved with photo & no name:', r2)
-    print('thumbnail in list:', page.evaluate("() => !!document.querySelector('.med-card img.med-thumb')"))
+    print('thumbnail in list:', page.evaluate("() => !!document.querySelector('.med-card img.mc-photo')"))
     page.wait_for_timeout(1500)
     print('photo synced natively:', page.evaluate("() => window.__calls.photos ? Object.keys(window.__calls.photos.photos) : null"))
 
