@@ -72,6 +72,48 @@ with sync_playwright() as p:
        const before = m.stock; S.setDoseStatus(d, m.id, '14:00', 'taken'); const mid = m.stock; S.setDoseStatus(d, m.id, '14:00', null); return [before, mid, m.stock]; }""")
     print('stock before/taken/undo:', u)
 
+    # ---- 12-hour time everywhere
+    page.click('[data-nav="meds"]'); page.wait_for_timeout(300)
+    txt = page.evaluate("() => document.body.innerText")
+    print('12h time shown (ص/م, no 14:00):', ('ص' in txt or 'م' in txt) and '14:00' not in txt and '08:00' not in txt)
+    print('alarm timeLabel sent:', page.evaluate("() => window.__calls.alarms.alarms.slice(0,2).map(a => a.time + ' -> ' + a.timeLabel)"))
+    page.evaluate("() => window.__tr.store.updateSettings({ timeFormat: '24' })"); page.wait_for_timeout(300)
+    page.click('[data-nav="settings"]'); page.wait_for_timeout(200); page.click('[data-nav="meds"]'); page.wait_for_timeout(300)
+    print('24h option works:', '14:00' in page.evaluate("() => document.body.innerText"))
+    page.evaluate("() => window.__tr.store.updateSettings({ timeFormat: '12' })")
+
+    # ---- medication photo (no name allowed with a photo)
+    page.click('[data-act="add-med"]'); page.wait_for_timeout(400)
+    page.set_input_files('#photo-input-gal', '/tmp/pill.jpg'); page.wait_for_timeout(800)
+    print('photo preview shown:', page.evaluate("() => !!document.querySelector('#photo-preview img')"))
+    page.evaluate("() => { const f = document.querySelector('#modal-form'); f.querySelector('[name=dose]').value = '1'; }")
+    page.click('[data-act="add-time"]') if page.query_selector('[data-act="add-time"]') else None
+    page.wait_for_timeout(200)
+    page.click('[data-act="save-med"]'); page.wait_for_timeout(900)
+    r2 = page.evaluate("() => { const m = window.__tr.store.getState().meds.find(x => x.photo && !x.nameAr); return m ? { name: m.nameAr, photoKb: Math.round(m.photo.length / 1024), id: m.id } : null; }")
+    print('med saved with photo & no name:', r2)
+    print('thumbnail in list:', page.evaluate("() => !!document.querySelector('.med-card img.med-thumb')"))
+    page.wait_for_timeout(1500)
+    print('photo synced natively:', page.evaluate("() => window.__calls.photos ? Object.keys(window.__calls.photos.photos) : null"))
+
+    # ---- phone ringtone list: preview stops on close
+    page.click('[data-nav="settings"]'); page.wait_for_timeout(300)
+    page.evaluate("() => { window.__calls.stops = 0; window.__calls.played = []; }")
+    page.click('[data-act="pick-system-tone"]'); page.wait_for_timeout(500)
+    print('ringtone rows:', page.evaluate("() => document.querySelectorAll('.rt-row').length"))
+    page.click('.rt-row[data-title="Tone B"]'); page.wait_for_timeout(200)
+    print('played on tap:', page.evaluate("() => window.__calls.played"))
+    page.evaluate("() => document.querySelector('#modal').close()"); page.wait_for_timeout(300)
+    print('stopped on close (stops >= 1):', page.evaluate("() => window.__calls.stops"))
+    page.click('[data-act="pick-system-tone"]'); page.wait_for_timeout(400)
+    page.click('.rt-row[data-title="Tone A"]'); page.click('[data-act="rt-save"]'); page.wait_for_timeout(500)
+    print('saved ringtone:', page.evaluate("() => window.__tr.store.getState().settings.sysToneName + ' | ' + window.__tr.store.getState().settings.sysToneUri"))
+    page.evaluate("() => { const d=document.querySelector('#modal'); if (d.open) d.close(); }")
+    # auto-stop after 3s without closing
+    page.evaluate("() => { window.__calls.stops = 0; }")
+    page.click('[data-act="preview-tone"][data-tone="system"]'); page.wait_for_timeout(3500)
+    print('auto-stop after 3s:', page.evaluate("() => window.__calls.stops"))
+
     # test alarm buttons
     page.click('[data-nav="settings"]'); page.wait_for_timeout(300)
     page.click('[data-act="native-test-2min"]'); page.wait_for_timeout(500)

@@ -14,6 +14,8 @@ final class AlarmItem {
     String date = "";
     String medId = "";
     String time = "";
+    /** الوقت بصيغة العرض (مثل 2:00 م) */
+    String timeLabel = "";
     String title = "";
     String body = "";
     /** الأدوية داخل المنبّه: [{medId, name, dose}] */
@@ -33,6 +35,7 @@ final class AlarmItem {
             o.put("date", date);
             o.put("medId", medId);
             o.put("time", time);
+            o.put("timeLabel", timeLabel);
             o.put("title", title);
             o.put("body", body);
             o.put("src", src);
@@ -50,6 +53,7 @@ final class AlarmItem {
         a.date = o.optString("date", "");
         a.medId = o.optString("medId", "");
         a.time = o.optString("time", "");
+        a.timeLabel = o.optString("timeLabel", "");
         a.title = o.optString("title", "");
         a.body = o.optString("body", "");
         a.src = o.optString("src", "js");

@@ -7,6 +7,7 @@ import android.app.AlarmManager;
 import android.app.NotificationManager;
 import android.content.Context;
 import android.content.Intent;
+import android.database.Cursor;
 import android.media.AudioAttributes;
 import android.media.AudioManager;
 import android.media.Ringtone;
@@ -15,6 +16,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.PowerManager;
 import android.provider.Settings;
+import android.util.Base64;
 
 import androidx.activity.result.ActivityResult;
 import androidx.core.app.NotificationManagerCompat;
@@ -30,7 +32,10 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -81,6 +86,67 @@ public class DeviceSettingsPlugin extends Plugin {
         } catch (Exception ignored) { }
         out.put("title", title);
         call.resolve(out);
+    }
+
+    /* ---------------- قائمة نغمات الهاتف (إشعارات + منبّهات + رنات) ---------------- */
+    @PluginMethod
+    public void listRingtones(PluginCall call) {
+        JSArray out = new JSArray();
+        try {
+            RingtoneManager rm = new RingtoneManager(getContext());
+            rm.setType(RingtoneManager.TYPE_ALARM | RingtoneManager.TYPE_NOTIFICATION | RingtoneManager.TYPE_RINGTONE);
+            Cursor cur = rm.getCursor();
+            int guard = 0;
+            while (cur != null && cur.moveToNext() && guard < 400) {
+                String title = cur.getString(RingtoneManager.TITLE_COLUMN_INDEX);
+                Uri uri = rm.getRingtoneUri(cur.getPosition());
+                if (uri == null) continue;
+                JSObject o = new JSObject();
+                o.put("title", title == null ? "" : title);
+                o.put("uri", uri.toString());
+                out.put(o);
+                guard++;
+            }
+        } catch (Exception ignored) { }
+        JSObject res = new JSObject();
+        res.put("ringtones", out);
+        call.resolve(res);
+    }
+
+    /* ---------------- صور الأدوية لشاشة المنبّه ---------------- */
+    @PluginMethod
+    public void syncPhotos(PluginCall call) {
+        try {
+            File dir = new File(getContext().getFilesDir(), "medphotos");
+            if (!dir.exists()) dir.mkdirs();
+            JSObject photos = call.getObject("photos");
+            if (photos != null) {
+                Iterator<String> it = photos.keys();
+                while (it.hasNext()) {
+                    String id = it.next();
+                    String data = photos.optString(id, "");
+                    int comma = data.indexOf(',');
+                    if (comma >= 0) data = data.substring(comma + 1);
+                    if (data.isEmpty()) continue;
+                    byte[] bytes = Base64.decode(data, Base64.DEFAULT);
+                    FileOutputStream fos = new FileOutputStream(AlarmStore.photoFile(getContext(), id));
+                    try {
+                        fos.write(bytes);
+                    } finally {
+                        fos.close();
+                    }
+                }
+            }
+            JSArray rem = call.getArray("remove");
+            if (rem != null) {
+                for (int i = 0; i < rem.length(); i++) {
+                    AlarmStore.photoFile(getContext(), rem.getString(i)).delete();
+                }
+            }
+            call.resolve();
+        } catch (Exception e) {
+            call.reject(String.valueOf(e.getMessage()));
+        }
     }
 
     /* ---------------- معاينة نغمة الهاتف ---------------- */

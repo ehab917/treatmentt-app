@@ -10,6 +10,7 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.File;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -53,6 +54,12 @@ final class AlarmStore {
 
     static String fmt(long ms) {
         return new SimpleDateFormat("MM-dd HH:mm:ss", Locale.US).format(new Date(ms));
+    }
+
+    /** ملف صورة الدواء المحفوظة أصليًا (تُعرض على شاشة المنبّه) */
+    static File photoFile(Context c, String medId) {
+        String safe = medId == null ? "" : medId.replaceAll("[^A-Za-z0-9_-]", "_");
+        return new File(new File(c.getFilesDir(), "medphotos"), safe + ".jpg");
     }
 
     static int idFor(String s) {

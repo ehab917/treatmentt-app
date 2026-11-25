@@ -3,6 +3,8 @@ package com.treatmentreminder.app;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.res.ColorStateList;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -16,6 +18,7 @@ import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.CheckBox;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
@@ -25,6 +28,7 @@ import android.widget.Toast;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -208,6 +212,30 @@ public class AlarmActivity extends Activity {
         setContentView(sv);
     }
 
+    /** صورة الدواء (إن وُجدت) بحواف مستديرة */
+    private ImageView photoView(String medId, int sizeDp) {
+        try {
+            File f = AlarmStore.photoFile(this, medId);
+            if (!f.exists()) return null;
+            Bitmap bmp = BitmapFactory.decodeFile(f.getAbsolutePath());
+            if (bmp == null) return null;
+            ImageView iv = new ImageView(this);
+            iv.setImageBitmap(bmp);
+            iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            GradientDrawable bg = new GradientDrawable();
+            bg.setColor(0xFF134E45);
+            bg.setCornerRadius(dp(18));
+            iv.setBackground(bg);
+            iv.setClipToOutline(true);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(sizeDp), dp(sizeDp));
+            lp.setMarginEnd(dp(12));
+            iv.setLayoutParams(lp);
+            return iv;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     /** يعيد بناء قائمة الأدوية فقط عند تغيّرها (حتى لا تضيع اختيارات المريض). */
     private void rebuildList(AlarmItem a) {
         JSONArray items = a.itemsOrSingle();
@@ -231,8 +259,16 @@ public class AlarmActivity extends Activity {
             cb.setButtonTintList(ColorStateList.valueOf(Color.WHITE));
             cb.setPadding(dp(8), dp(10), dp(8), dp(10));
             cb.setVisibility(items.length() > 1 ? View.VISIBLE : View.VISIBLE);
-            listBox.addView(cb, new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            ImageView photo = photoView(it.optString("medId", ""), items.length() > 1 ? 88 : 140);
+            if (photo != null) row.addView(photo);
+            row.addView(cb, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            rlp.bottomMargin = dp(8);
+            listBox.addView(row, rlp);
             boxes.add(cb);
             boxIds.add(it.optString("medId", ""));
         }
@@ -246,7 +282,7 @@ public class AlarmActivity extends Activity {
             return;
         }
         tvTitle.setText("⏰  " + a.title);
-        tvTime.setText(a.time);
+        tvTime.setText(a.timeLabel != null && !a.timeLabel.isEmpty() ? a.timeLabel : a.time);
         rebuildList(a);
         int c = AlarmService.count();
         tvMore.setText(c > 1 ? "+" + (c - 1) + " " + moreLabel : "");

@@ -48,6 +48,7 @@ const DEFAULT_STATE = {
     snoozeMin: 10,
     alarmMode: true,
     fontSize: 'medium',
+    timeFormat: '12',
     stockAlertDays: 3,
     repeatMin: 5,
     repeatMax: 6,
@@ -206,6 +207,7 @@ function addMed(data) {
     paused: false,
     stock: toStock(data.stock),
     perDose: Number(data.perDose) > 0 ? Number(data.perDose) : 1,
+    photo: typeof data.photo === 'string' ? data.photo : '',
     createdAt: Date.now()
   };
   state.meds.push(med);
@@ -227,6 +229,7 @@ function updateMed(id, data) {
     endDate: data.endDate === undefined ? med.endDate : data.endDate,
     color: data.color || med.color,
     paused: data.paused === undefined ? med.paused : !!data.paused,
+    photo: data.photo === undefined ? (med.photo || '') : (typeof data.photo === 'string' ? data.photo : ''),
     stock: data.stock === undefined ? med.stock : toStock(data.stock),
     perDose: data.perDose === undefined ? (med.perDose || 1) : (Number(data.perDose) > 0 ? Number(data.perDose) : 1)
   });
