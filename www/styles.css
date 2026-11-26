@@ -703,3 +703,18 @@ input::placeholder, textarea::placeholder { color: var(--muted); opacity: .75; }
 
 .btn.primary { color: var(--on-brand, #fff); font-weight: 800; }
 .hero { background: linear-gradient(140deg, var(--hero-a, var(--brand)) 0%, var(--hero-b, var(--brand-dark)) 100%); }
+
+/* محرر قص الصورة + نموذج عدة أدوية */
+[hidden] { display: none !important; }
+.photo-editor { margin-top: 10px; padding: 12px; border: 1.5px solid var(--border-strong); border-radius: 16px; background: var(--card); display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.pe-canvas { width: min(100%, 280px); aspect-ratio: 1; border-radius: 16px; border: 2px solid var(--brand); touch-action: none; background: #000; cursor: grab; }
+.pe-zoom-row { display: flex; align-items: center; gap: 10px; width: 100%; font-size: .85rem; }
+.pe-zoom-row .pe-zoom { flex: 1; accent-color: var(--brand); }
+.pe-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; width: 100%; }
+.pe-actions .btn { width: 100%; justify-content: center; padding: 10px 2px; }
+.mb-title { display: none; margin: 0 0 8px; font-size: 1rem; font-weight: 800; color: var(--brand); }
+.multi .mb-title { display: block; }
+.multi .med-block { border: 1.5px solid var(--border); border-radius: 16px; padding: 12px; margin-bottom: 12px; background: color-mix(in srgb, var(--brand) 5%, var(--card)); }
+.mb-shared { margin: 16px 0 6px; font-size: .95rem; font-weight: 800; padding-inline-start: 10px; border-inline-start: 4px solid var(--brand); }
+.count-fld .seg { flex-wrap: nowrap; }
+.count-fld .seg button { flex: 1; font-weight: 800; }

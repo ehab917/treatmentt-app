@@ -18,6 +18,7 @@ import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.CheckBox;
+import android.widget.CompoundButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -234,25 +235,74 @@ public class AlarmActivity extends Activity {
         setContentView(root);
     }
 
-    /** صورة الدواء (إن وُجدت) بحواف مستديرة، وإلا مربع بأيقونة 💊 */
-    private View photoView(String medId, int sizeDp) {
+    /** صورة الدواء (إن وُجدت) بحواف مستديرة، وإلا مربع بأيقونة 💊. الحجم بالبكسل والمعلمات يضعها المستدعي. */
+    private View photoView(String medId, int sizePx, float emojiSp) {
         File f = AlarmStore.photoFile(this, medId);
         Bitmap bmp = f.exists() ? BitmapFactory.decodeFile(f.getAbsolutePath()) : null;
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(sizeDp), dp(sizeDp));
         if (bmp != null) {
             ImageView iv = new ImageView(this);
             iv.setImageBitmap(bmp);
             iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
             iv.setBackground(rounded(0xFF134E45, 18, 0x66FFFFFF));
             iv.setClipToOutline(true);
-            iv.setLayoutParams(lp);
             return iv;
         }
-        TextView ph = label(sizeDp > 120 ? 64 : 30, Color.WHITE, false);
+        TextView ph = label(emojiSp, Color.WHITE, false);
         ph.setText("💊");
         ph.setBackground(rounded(0xFF134E45, 18, 0x66FFFFFF));
-        ph.setLayoutParams(lp);
         return ph;
+    }
+
+    /** خلية دواء في الشبكة: صورة مربعة كبيرة + مربع اختيار + الاسم + الجرعة */
+    private View gridCell(String medId, String name, String dose, int cellW, CheckBox cb) {
+        LinearLayout cell = new LinearLayout(this);
+        cell.setOrientation(LinearLayout.VERTICAL);
+        cell.setPadding(dp(8), dp(8), dp(8), dp(10));
+        cell.setBackground(rounded(0x26FFFFFF, 18, 0x44FFFFFF));
+
+        int photoSize = cellW - dp(16);
+        View photo = photoView(medId, photoSize, 44);
+        cell.addView(photo, new LinearLayout.LayoutParams(photoSize, photoSize));
+
+        LinearLayout line = new LinearLayout(this);
+        line.setOrientation(LinearLayout.HORIZONTAL);
+        line.setGravity(Gravity.CENTER_VERTICAL);
+        cb.setButtonTintList(ColorStateList.valueOf(Color.WHITE));
+        line.addView(cb, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        TextView tvName = label(17, Color.WHITE, true);
+        tvName.setGravity(Gravity.START);
+        tvName.setMaxLines(2);
+        tvName.setText(name);
+        line.addView(tvName, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = dp(8);
+        cell.addView(line, lp);
+
+        if (!dose.isEmpty()) {
+            TextView tvDose = label(14, 0xFFA7F3D0, false);
+            tvDose.setGravity(Gravity.START);
+            tvDose.setText(dose);
+            cell.addView(tvDose);
+        }
+
+        /* غير المحدّد يخفت حتى يعرف المريض ما سيُسجَّل */
+        final View dim = cell;
+        cb.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton b, boolean checked) {
+                dim.setAlpha(checked ? 1f : 0.45f);
+            }
+        });
+        final CheckBox box = cb;
+        cell.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                box.toggle();
+            }
+        });
+        return cell;
     }
 
     /** يعيد بناء القائمة فقط عند تغيّرها (حتى لا تضيع اختيارات المريض). */
@@ -266,6 +316,10 @@ public class AlarmActivity extends Activity {
         boxIds.clear();
         int n = items.length();
         boolean multi = n > 1;
+
+        int gap = dp(12);
+        int cellW = (getResources().getDisplayMetrics().widthPixels - dp(36) - gap) / 2;
+        LinearLayout row = null;
 
         for (int i = 0; i < n; i++) {
             JSONObject it = items.optJSONObject(i);
@@ -284,8 +338,8 @@ public class AlarmActivity extends Activity {
                 LinearLayout one = new LinearLayout(this);
                 one.setOrientation(LinearLayout.VERTICAL);
                 one.setGravity(Gravity.CENTER_HORIZONTAL);
-                View photo = photoView(medId, 190);
-                one.addView(photo);
+                int size = dp(200);
+                one.addView(photoView(medId, size, 64), new LinearLayout.LayoutParams(size, size));
                 TextView tvName = label(28, Color.WHITE, true);
                 tvName.setText(name);
                 LinearLayout.LayoutParams np = new LinearLayout.LayoutParams(
@@ -302,46 +356,19 @@ public class AlarmActivity extends Activity {
                 continue;
             }
 
-            /* عدة أدوية: بطاقة لكل دواء (صورة + اسم + جرعة + مربع اختيار) */
-            LinearLayout card = new LinearLayout(this);
-            card.setOrientation(LinearLayout.HORIZONTAL);
-            card.setGravity(Gravity.CENTER_VERTICAL);
-            card.setPadding(dp(10), dp(10), dp(12), dp(10));
-            card.setBackground(rounded(0x26FFFFFF, 18, 0x44FFFFFF));
-            View photo = photoView(medId, n > 2 ? 72 : 88);
-            ((LinearLayout.LayoutParams) photo.getLayoutParams()).setMarginEnd(dp(12));
-            card.addView(photo);
-
-            LinearLayout texts = new LinearLayout(this);
-            texts.setOrientation(LinearLayout.VERTICAL);
-            TextView tvName = label(20, Color.WHITE, true);
-            tvName.setGravity(Gravity.START);
-            tvName.setText(name);
-            texts.addView(tvName);
-            if (!dose.isEmpty()) {
-                TextView tvDose = label(15, 0xFFA7F3D0, false);
-                tvDose.setGravity(Gravity.START);
-                tvDose.setText(dose);
-                texts.addView(tvDose);
+            /* عدة أدوية: شبكة من عمودين، كل خلية بصورة كبيرة */
+            if (i % 2 == 0) {
+                row = new LinearLayout(this);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                rp.bottomMargin = gap;
+                listBox.addView(row, rp);
             }
-            card.addView(texts, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-
-            cb.setButtonTintList(ColorStateList.valueOf(Color.WHITE));
-            cb.setScaleX(1.35f);
-            cb.setScaleY(1.35f);
-            card.addView(cb, new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-            final CheckBox box = cb;
-            card.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    box.toggle();
-                }
-            });
             LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            cp.bottomMargin = dp(10);
-            listBox.addView(card, cp);
+                    cellW, ViewGroup.LayoutParams.WRAP_CONTENT);
+            if (i % 2 == 0) cp.setMarginEnd(gap);
+            row.addView(gridCell(medId, name, dose, cellW, cb), cp);
         }
         btnTaken.setText(multi ? takenSelLabel : takenLabel);
     }

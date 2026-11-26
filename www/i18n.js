@@ -22,6 +22,10 @@ const STRINGS = {
       in: 'بعد', at: 'في', everyDay: 'يوميًا', since: 'منذ'
     },
     meds: {
+      count: 'كم دواء في هذا الموعد؟',
+      countHint: 'اختر العدد لتضيف كل الأدوية دفعة واحدة بنفس المواعيد',
+      itemN: 'الدواء {n}',
+      sharedTitle: 'المواعيد والتواريخ (لكل الأدوية أعلاه)',
       title: 'الأدوية', add: 'إضافة دواء', empty: 'لا توجد أدوية بعد',
       emptyHint: 'ابدأ بإضافة أول دواء وأوقات صرفه لتذكيرك يوميًا.',
       nameAr: 'الاسم بالعربية', nameEn: 'الاسم بالإنجليزية',
@@ -99,7 +103,12 @@ const STRINGS = {
       remove: 'حذف',
       hint: 'تظهر مصغّرة في القوائم وكبيرة في شاشة المنبّه. الاسم اختياري مع الصورة.',
       unnamed: 'دواء',
-      needNameOrPhoto: 'اكتب اسم الدواء أو أضف صورة له'
+      needNameOrPhoto: 'اكتب اسم الدواء أو أضف صورة له',
+      dragHint: 'اسحب الصورة لتحريكها داخل المربع وكبّرها بالشريط',
+      zoom: 'تكبير',
+      rotate: 'تدوير',
+      cancel: 'إلغاء',
+      done: 'تم'
     },
     stock: {
       have: 'عدد الحبات المتبقي',
@@ -242,6 +251,10 @@ const STRINGS = {
       in: 'in', at: 'at', everyDay: 'daily', since: 'since'
     },
     meds: {
+      count: 'How many medications at this time?',
+      countHint: 'Pick a number to add them all at once with the same schedule',
+      itemN: 'Medication {n}',
+      sharedTitle: 'Schedule and dates (for all medications above)',
       title: 'Medicines', add: 'Add medicine', empty: 'No medicines yet',
       emptyHint: 'Add your first medicine and its times to get daily reminders.',
       nameAr: 'Name (Arabic)', nameEn: 'Name (English)',
@@ -319,7 +332,12 @@ const STRINGS = {
       remove: 'Remove',
       hint: 'Shown as a thumbnail in lists and large on the alarm screen. Name is optional with a photo.',
       unnamed: 'Medication',
-      needNameOrPhoto: 'Enter a name or add a photo'
+      needNameOrPhoto: 'Enter a name or add a photo',
+      dragHint: 'Drag the photo to move it inside the square, and zoom with the slider',
+      zoom: 'Zoom',
+      rotate: 'Rotate',
+      cancel: 'Cancel',
+      done: 'Done'
     },
     stock: {
       have: 'Pills remaining',

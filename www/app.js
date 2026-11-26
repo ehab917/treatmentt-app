@@ -149,32 +149,132 @@ function applyTheme() {
   else root.setAttribute('data-theme', theme);
 }
 
-/* ================= صور الأدوية ================= */
-function resizeImageFile(file, max, quality) {
+/* ================= صور الأدوية + محرر القص ================= */
+const PE = 480;            // حجم لوحة المعاينة الداخلية
+const PE_OUT = 420;        // حجم الصورة المحفوظة (مربع)
+let peState = null;
+let peDrag = null;
+
+function loadImageFile(file) {
   return new Promise((resolve, reject) => {
-    const img = new Image();
     const url = URL.createObjectURL(file);
-    img.onload = () => {
-      const r = Math.min(1, max / Math.max(img.width, img.height));
-      const c = document.createElement('canvas');
-      c.width = Math.max(1, Math.round(img.width * r));
-      c.height = Math.max(1, Math.round(img.height * r));
-      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-      URL.revokeObjectURL(url);
-      resolve(c.toDataURL('image/jpeg', quality));
-    };
+    const img = new Image();
+    img.onload = () => resolve({ img, url });
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('image')); };
     img.src = url;
   });
 }
 
-async function handlePhotoFile(file) {
+function peCover(st) {
+  const iw = st.img.naturalWidth || st.img.width;
+  const ih = st.img.naturalHeight || st.img.height;
+  return PE / Math.min(iw, ih);
+}
+
+/** يمنع خروج الصورة عن المربع (تبقى تغطيه دائمًا) */
+function peClamp() {
+  if (!peState) return;
+  const iw = peState.img.naturalWidth || peState.img.width;
+  const ih = peState.img.naturalHeight || peState.img.height;
+  const sc = peCover(peState) * peState.zoom;
+  const odd = peState.rot % 2 === 1;
+  const ew = (odd ? ih : iw) * sc;
+  const eh = (odd ? iw : ih) * sc;
+  const mx = Math.max(0, (ew - PE) / 2);
+  const my = Math.max(0, (eh - PE) / 2);
+  peState.ox = Math.min(mx, Math.max(-mx, peState.ox));
+  peState.oy = Math.min(my, Math.max(-my, peState.oy));
+}
+
+function peRender(ctx, st, size) {
+  const iw = st.img.naturalWidth || st.img.width;
+  const ih = st.img.naturalHeight || st.img.height;
+  const f = size / PE;
+  const sc = peCover(st) * st.zoom * f;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, size, size);
+  ctx.save();
+  ctx.translate(size / 2 + st.ox * f, size / 2 + st.oy * f);
+  ctx.rotate(st.rot * Math.PI / 2);
+  ctx.scale(sc, sc);
+  ctx.drawImage(st.img, -iw / 2, -ih / 2);
+  ctx.restore();
+}
+
+function peDraw() {
+  if (!peState) return;
+  const cv = $(`#pe-canvas-${peState.idx}`);
+  if (cv) peRender(cv.getContext('2d'), peState, PE);
+}
+
+function peClose(applyUrl) {
+  if (peState) {
+    const ed = $(`#photo-editor-${peState.idx}`);
+    if (ed) ed.hidden = true;
+    if (peState.url) URL.revokeObjectURL(peState.url);
+  }
+  peState = null;
+  peDrag = null;
+}
+
+async function startPhotoEdit(file, idx) {
   if (!file || !formState || formState.type !== 'med') return;
   try {
-    formState.photo = await resizeImageFile(file, 420, 0.72);
-    const box = $('#photo-preview');
-    if (box) box.innerHTML = `<img src="${formState.photo}" alt="">`;
+    const { img, url } = await loadImageFile(file);
+    if (peState) peClose();
+    $$('.photo-editor').forEach((e) => { e.hidden = true; });
+    peState = { idx, img, url, rot: 0, zoom: 1, ox: 0, oy: 0 };
+    const ed = $(`#photo-editor-${idx}`);
+    if (!ed) return;
+    ed.hidden = false;
+    const z = $(`#pe-zoom-${idx}`);
+    if (z) z.value = '1';
+    peDraw();
+    ed.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   } catch (e) { toast(t('toast.error')); }
+}
+
+function peFinish() {
+  if (!peState) return;
+  const idx = peState.idx;
+  const out = document.createElement('canvas');
+  out.width = PE_OUT;
+  out.height = PE_OUT;
+  peRender(out.getContext('2d'), peState, PE_OUT);
+  const url = out.toDataURL('image/jpeg', 0.78);
+  formState.photos[idx] = url;
+  const box = $(`#photo-preview-${idx}`);
+  if (box) box.innerHTML = `<img src="${url}" alt="">`;
+  peClose();
+}
+
+function bindPhotoEditor() {
+  document.addEventListener('pointerdown', (e) => {
+    const cv = e.target.closest && e.target.closest('.pe-canvas');
+    if (!cv || !peState) return;
+    const r = cv.getBoundingClientRect();
+    peDrag = { x: e.clientX, y: e.clientY, ox: peState.ox, oy: peState.oy, k: PE / r.width };
+    try { cv.setPointerCapture(e.pointerId); } catch (er) { /* ignore */ }
+    e.preventDefault();
+  });
+  document.addEventListener('pointermove', (e) => {
+    if (!peDrag || !peState) return;
+    peState.ox = peDrag.ox + (e.clientX - peDrag.x) * peDrag.k;
+    peState.oy = peDrag.oy + (e.clientY - peDrag.y) * peDrag.k;
+    peClamp();
+    peDraw();
+  });
+  const end = () => { peDrag = null; };
+  document.addEventListener('pointerup', end);
+  document.addEventListener('pointercancel', end);
+  document.addEventListener('input', (e) => {
+    if (e.target.classList && e.target.classList.contains('pe-zoom') && peState) {
+      peState.zoom = Number(e.target.value) || 1;
+      peClamp();
+      peDraw();
+    }
+  });
 }
 
 /* ================= حجم الخط ================= */
@@ -731,7 +831,7 @@ function viewSettings() {
   </section>`;
 
   html += `<section class="card">
-    <div class="section-head"><h2>${esc(t('settings.about'))}</h2><span class="count">${esc(t('settings.version'))} 1.6.2</span></div>
+    <div class="section-head"><h2>${esc(t('settings.about'))}</h2><span class="count">${esc(t('settings.version'))} 1.6.3</span></div>
     <p class="muted small">${esc(t('settings.privacy'))}</p>
   </section>`;
 
@@ -774,48 +874,83 @@ function render() {
 /* ================= نماذج الإدخال ================= */
 let formState = null;
 
-function medForm(med) {
-  const isEdit = !!med;
-  const m = med || {
-    nameAr: '', nameEn: '', dose: '', form: '', notes: '',
-    times: ['08:00'], startDate: S.todayISO(), endDate: '',
-    color: S.PALETTE[S.getState().meds.length % S.PALETTE.length]
-  };
-  formState = { type: 'med', id: med ? med.id : null, times: (m.times || []).slice(), color: m.color, photo: m.photo || '' };
+const MAX_MEDS_PER_FORM = 6;
 
-  const body = `
+function medBlockHtml(i, m, isEdit) {
+  const forms = ['tablet', 'capsule', 'injection', 'syrup', 'drops', 'cream', 'inhaler', 'suppository', 'other'];
+  return `<section class="med-block" data-block="${i}" ${i > 0 ? 'hidden' : ''}>
+    <h4 class="mb-title">${esc(t('meds.itemN', { n: i + 1 }))}</h4>
     <div class="fld"><span>${esc(t('photo.label'))}</span>
       <div class="photo-row">
-        <div id="photo-preview" class="photo-thumb">${m.photo ? `<img src="${m.photo}" alt="">` : '💊'}</div>
+        <div id="photo-preview-${i}" class="photo-thumb">${m.photo ? `<img src="${m.photo}" alt="">` : '💊'}</div>
         <div class="photo-actions">
-          <button type="button" class="btn sm soft" data-act="photo-camera">📷 ${esc(t('photo.camera'))}</button>
-          <button type="button" class="btn sm ghost" data-act="photo-gallery">🖼️ ${esc(t('photo.gallery'))}</button>
-          <button type="button" class="btn sm ghost" data-act="photo-remove">🗑️ ${esc(t('photo.remove'))}</button>
+          <button type="button" class="btn sm soft" data-act="photo-camera" data-idx="${i}">📷 ${esc(t('photo.camera'))}</button>
+          <button type="button" class="btn sm ghost" data-act="photo-gallery" data-idx="${i}">🖼️ ${esc(t('photo.gallery'))}</button>
+          <button type="button" class="btn sm ghost" data-act="photo-remove" data-idx="${i}">🗑️ ${esc(t('photo.remove'))}</button>
         </div>
       </div>
-      <input type="file" id="photo-input-cam" accept="image/*" capture="environment" hidden>
-      <input type="file" id="photo-input-gal" accept="image/*" hidden>
-      <small class="muted">${esc(t('photo.hint'))}</small>
+      <div class="photo-editor" id="photo-editor-${i}" hidden>
+        <canvas id="pe-canvas-${i}" class="pe-canvas" width="${PE}" height="${PE}"></canvas>
+        <small class="muted">${esc(t('photo.dragHint'))}</small>
+        <label class="pe-zoom-row"><span>🔍 ${esc(t('photo.zoom'))}</span>
+          <input type="range" class="pe-zoom" id="pe-zoom-${i}" min="1" max="3" step="0.01" value="1"></label>
+        <div class="pe-actions">
+          <button type="button" class="btn sm ghost" data-act="pe-rotate" data-idx="${i}">⟳ ${esc(t('photo.rotate'))}</button>
+          <button type="button" class="btn sm ghost" data-act="pe-cancel" data-idx="${i}">✕ ${esc(t('photo.cancel'))}</button>
+          <button type="button" class="btn sm primary" data-act="pe-done" data-idx="${i}">✔ ${esc(t('photo.done'))}</button>
+        </div>
+      </div>
+      <input type="file" id="photo-input-cam-${i}" accept="image/*" capture="environment" hidden>
+      <input type="file" id="photo-input-gal-${i}" accept="image/*" hidden>
     </div>
     <label class="fld"><span>${esc(t('meds.nameAr'))}</span>
-      <input type="text" name="nameAr" value="${esc(m.nameAr)}" placeholder="${esc(t('meds.nameArPh'))}"></label>
+      <input type="text" name="nameAr_${i}" value="${esc(m.nameAr)}" placeholder="${esc(t('meds.nameArPh'))}"></label>
     <label class="fld"><span>${esc(t('meds.nameEn'))}</span>
-      <input type="text" name="nameEn" value="${esc(m.nameEn)}" placeholder="${esc(t('meds.nameEnPh'))}"></label>
+      <input type="text" name="nameEn_${i}" value="${esc(m.nameEn)}" placeholder="${esc(t('meds.nameEnPh'))}"></label>
     <div class="grid-2">
       <label class="fld"><span>${esc(t('meds.dose'))} (${esc(t('meds.unit'))})</span>
-        <input type="text" name="dose" value="${esc(m.dose)}" placeholder="${esc(t('meds.dosePh'))}"></label>
+        <input type="text" name="dose_${i}" value="${esc(m.dose)}" placeholder="${esc(t('meds.dosePh'))}"></label>
       <label class="fld"><span>${esc(t('meds.form'))}</span>
-        <select name="form">
-          ${['tablet', 'capsule', 'injection', 'syrup', 'drops', 'cream', 'inhaler', 'suppository', 'other'].map((key) => `
-            <option value="${key}" ${(m.form === key || (!m.form && key === 'tablet')) ? 'selected' : ''}>${esc(t('meds.forms.' + key))}</option>`).join('')}
+        <select name="form_${i}">
+          ${forms.map((key) => `<option value="${key}" ${(m.form === key || (!m.form && key === 'tablet')) ? 'selected' : ''}>${esc(t('meds.forms.' + key))}</option>`).join('')}
         </select></label>
     </div>
     <div class="grid-2">
       <label class="fld"><span>${esc(t('stock.have'))} (${esc(t('common.optional'))})</span>
-        <input type="number" name="stock" min="0" step="1" inputmode="decimal" value="${m.stock == null ? '' : esc(m.stock)}"></label>
+        <input type="number" name="stock_${i}" min="0" step="1" inputmode="decimal" value="${m.stock == null ? '' : esc(m.stock)}"></label>
       <label class="fld"><span>${esc(t('stock.perDose'))}</span>
-        <input type="number" name="perDose" min="0.25" step="0.25" inputmode="decimal" value="${esc(m.perDose || 1)}"></label>
+        <input type="number" name="perDose_${i}" min="0.25" step="0.25" inputmode="decimal" value="${esc(m.perDose || 1)}"></label>
     </div>
+    <label class="fld"><span>${esc(t('meds.notes'))}</span>
+      <textarea name="notes_${i}" placeholder="${esc(t('meds.notesPh'))}">${esc(m.notes)}</textarea></label>
+  </section>`;
+}
+
+function medForm(med) {
+  const isEdit = !!med;
+  const blank = {
+    nameAr: '', nameEn: '', dose: '', form: '', notes: '', photo: '',
+    times: ['08:00'], startDate: S.todayISO(), endDate: '',
+    color: S.PALETTE[S.getState().meds.length % S.PALETTE.length]
+  };
+  const m = med || blank;
+  formState = {
+    type: 'med', id: med ? med.id : null, times: (m.times || []).slice(), color: m.color,
+    count: 1, photos: new Array(MAX_MEDS_PER_FORM).fill('')
+  };
+  formState.photos[0] = m.photo || '';
+
+  const blocks = [];
+  for (let i = 0; i < (isEdit ? 1 : MAX_MEDS_PER_FORM); i++) blocks.push(medBlockHtml(i, i === 0 ? m : blank, isEdit));
+
+  const body = `
+    ${isEdit ? '' : `<div class="fld count-fld"><span>${esc(t('meds.count'))}</span>
+      <div class="seg" id="count-seg">${Array.from({ length: MAX_MEDS_PER_FORM }, (_, k) => `
+        <button type="button" data-act="set-count" data-n="${k + 1}" class="${k === 0 ? 'active' : ''}">${k + 1}</button>`).join('')}
+      </div>
+      <small class="muted">${esc(t('meds.countHint'))}</small></div>`}
+    ${blocks.join('')}
+    <h4 class="mb-shared">${esc(t('meds.sharedTitle'))}</h4>
     <div class="fld"><span>${esc(t('meds.times'))}</span>
       <div id="times-editor" style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px"></div>
       <button type="button" class="btn sm soft" data-act="add-time">＋ ${esc(t('meds.addTime'))}</button>
@@ -827,8 +962,6 @@ function medForm(med) {
       <label class="fld"><span>${esc(t('meds.endDate'))} (${esc(t('common.optional'))})</span>
         <input type="date" name="endDate" value="${esc(m.endDate || '')}"></label>
     </div>
-    <label class="fld"><span>${esc(t('meds.notes'))}</span>
-      <textarea name="notes" placeholder="${esc(t('meds.notesPh'))}">${esc(m.notes)}</textarea></label>
     <div class="fld"><span>${esc(t('meds.color'))}</span>
       <div class="btn-row" id="color-picker">${S.PALETTE.map((c) => `
         <button type="button" data-act="pick-color" data-color="${c}"
@@ -1819,23 +1952,37 @@ function bindEvents() {
       case 'save-med': {
         const form = $('#modal-form');
         const fd = new FormData(form);
-        const data = {
-          nameAr: fd.get('nameAr') || '',
-          nameEn: fd.get('nameEn') || '',
-          dose: fd.get('dose') || '',
-          form: fd.get('form') || '',
-          notes: fd.get('notes') || '',
-          times: formState.times.filter((x) => S.isValidTime(x)),
-          startDate: fd.get('startDate') || S.todayISO(),
-          endDate: fd.get('endDate') || '',
-          stock: fd.get('stock'),
-          perDose: fd.get('perDose'),
-          photo: formState.photo || '',
-          color: formState.color
-        };
-        if (!data.nameAr.trim() && !data.nameEn.trim() && !data.photo) { toast(t('photo.needNameOrPhoto')); return; }
-        if (!data.times.length) { toast(t('meds.noTimes')); return; }
-        if (formState.id) { S.updateMed(formState.id, data); } else { S.addMed(data); }
+        const count = formState.id ? 1 : (formState.count || 1);
+        const times = formState.times.filter((x) => S.isValidTime(x));
+        const startDate = fd.get('startDate') || S.todayISO();
+        const endDate = fd.get('endDate') || '';
+        const baseIdx = Math.max(0, S.PALETTE.indexOf(formState.color));
+        const list = [];
+        for (let i = 0; i < count; i++) {
+          const d = {
+            nameAr: fd.get('nameAr_' + i) || '',
+            nameEn: fd.get('nameEn_' + i) || '',
+            dose: fd.get('dose_' + i) || '',
+            form: fd.get('form_' + i) || '',
+            notes: fd.get('notes_' + i) || '',
+            times,
+            startDate,
+            endDate,
+            stock: fd.get('stock_' + i),
+            perDose: fd.get('perDose_' + i),
+            photo: formState.photos[i] || '',
+            color: i === 0 ? formState.color : S.PALETTE[(baseIdx + i) % S.PALETTE.length]
+          };
+          if (!d.nameAr.trim() && !d.nameEn.trim() && !d.photo) {
+            toast(count > 1 ? `${t('photo.needNameOrPhoto')} (${t('meds.itemN', { n: i + 1 })})` : t('photo.needNameOrPhoto'));
+            return;
+          }
+          list.push(d);
+        }
+        if (!times.length) { toast(t('meds.noTimes')); return; }
+        if (formState.id) S.updateMed(formState.id, list[0]);
+        else list.forEach((d) => S.addMed(d));
+        peClose();
         closeModal();
         toast(t('toast.saved'));
         render();
@@ -1987,14 +2134,30 @@ function bindEvents() {
         if (ok) { S.resetAll(); toast(t('toast.deleted')); render(); scheduleAll(); }
         break;
       }
-      case 'photo-camera': { const el = $('#photo-input-cam'); if (el) el.click(); break; }
-      case 'photo-gallery': { const el = $('#photo-input-gal'); if (el) el.click(); break; }
+      case 'photo-camera': { const el = $(`#photo-input-cam-${act.dataset.idx}`); if (el) el.click(); break; }
+      case 'photo-gallery': { const el = $(`#photo-input-gal-${act.dataset.idx}`); if (el) el.click(); break; }
       case 'photo-remove': {
         if (formState && formState.type === 'med') {
-          formState.photo = '';
-          const box = $('#photo-preview');
+          const idx = Number(act.dataset.idx) || 0;
+          formState.photos[idx] = '';
+          const box = $(`#photo-preview-${idx}`);
           if (box) box.textContent = '💊';
         }
+        break;
+      }
+      case 'pe-rotate': {
+        if (peState) { peState.rot = (peState.rot + 1) % 4; peClamp(); peDraw(); }
+        break;
+      }
+      case 'pe-cancel': peClose(); break;
+      case 'pe-done': peFinish(); break;
+      case 'set-count': {
+        if (!formState || formState.type !== 'med') break;
+        formState.count = Math.min(MAX_MEDS_PER_FORM, Math.max(1, Number(act.dataset.n) || 1));
+        $$('.med-block').forEach((b, k) => { b.hidden = k >= formState.count; });
+        $$('[data-act="set-count"]').forEach((b) => b.classList.toggle('active', b === act));
+        const f = $('#modal-form');
+        if (f) f.classList.toggle('multi', formState.count > 1);
         break;
       }
       case 'set-timefmt': {
@@ -2172,8 +2335,9 @@ function bindEvents() {
     }
     const id = e.target.id;
     const st = S.getState().settings;
-    if (id === 'photo-input-cam' || id === 'photo-input-gal') {
-      handlePhotoFile(e.target.files && e.target.files[0]);
+    const pm = /^photo-input-(?:cam|gal)-(\d+)$/.exec(id || '');
+    if (pm) {
+      startPhotoEdit(e.target.files && e.target.files[0], Number(pm[1]));
       e.target.value = '';
     }
     if (id === 'patient-name') { S.updateSettings({ patientName: e.target.value }); render(); }
@@ -2296,6 +2460,7 @@ function init() {
   applyFontSize();
   handleUrlParams();
   bindEvents();
+  bindPhotoEditor();
   render();
   initSW();
   if (NATIVE.isNative) nativeInit();

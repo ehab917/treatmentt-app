@@ -82,19 +82,47 @@ with sync_playwright() as p:
     print('24h option works:', '14:00' in page.evaluate("() => document.body.innerText"))
     page.evaluate("() => window.__tr.store.updateSettings({ timeFormat: '12' })")
 
-    # ---- medication photo (no name allowed with a photo)
+    # ---- medication photo: crop editor, then save with no name
     page.click('[data-act="add-med"]'); page.wait_for_timeout(400)
-    page.set_input_files('#photo-input-gal', '/tmp/pill.jpg'); page.wait_for_timeout(800)
-    print('photo preview shown:', page.evaluate("() => !!document.querySelector('#photo-preview img')"))
-    page.evaluate("() => { const f = document.querySelector('#modal-form'); f.querySelector('[name=dose]').value = '1'; }")
-    page.click('[data-act="add-time"]') if page.query_selector('[data-act="add-time"]') else None
-    page.wait_for_timeout(200)
+    page.set_input_files('#photo-input-gal-0', '/tmp/pill.jpg'); page.wait_for_timeout(900)
+    print('crop editor opened:', page.evaluate("() => !document.getElementById('photo-editor-0').hidden"))
+    # drag + zoom + rotate inside the editor
+    box = page.query_selector('#pe-canvas-0').bounding_box()
+    page.mouse.move(box['x'] + box['width']/2, box['y'] + box['height']/2)
+    page.mouse.down(); page.mouse.move(box['x'] + box['width']/2 + 40, box['y'] + box['height']/2 + 10, steps=5); page.mouse.up()
+    page.evaluate("() => { const z = document.getElementById('pe-zoom-0'); z.value = '1.8'; z.dispatchEvent(new Event('input', { bubbles: true })); }")
+    page.click('[data-act="pe-rotate"]'); page.wait_for_timeout(200)
+    page.click('[data-act="pe-done"]'); page.wait_for_timeout(500)
+    print('editor closed & preview square image:', page.evaluate("() => { const im = document.querySelector('#photo-preview-0 img'); return document.getElementById('photo-editor-0').hidden && !!im; }"))
+    page.evaluate("() => { const f = document.querySelector('#modal-form'); f.querySelector('[name=dose_0]').value = '1'; }")
     page.click('[data-act="save-med"]'); page.wait_for_timeout(900)
     r2 = page.evaluate("() => { const m = window.__tr.store.getState().meds.find(x => x.photo && !x.nameAr); return m ? { name: m.nameAr, photoKb: Math.round(m.photo.length / 1024), id: m.id } : null; }")
     print('med saved with photo & no name:', r2)
     print('thumbnail in list:', page.evaluate("() => !!document.querySelector('.med-card img.mc-photo')"))
     page.wait_for_timeout(1500)
     print('photo synced natively:', page.evaluate("() => window.__calls.photos ? Object.keys(window.__calls.photos.photos) : null"))
+
+    # ---- add 3 medicines at the same time in ONE form
+    before = page.evaluate("() => window.__tr.store.getState().meds.length")
+    page.click('[data-act="add-med"]'); page.wait_for_timeout(400)
+    page.click('[data-act="set-count"][data-n="3"]'); page.wait_for_timeout(200)
+    print('blocks visible after choosing 3:', page.evaluate("() => [...document.querySelectorAll('.med-block')].filter(b => !b.hidden).length"),
+          '| titles shown:', page.evaluate("() => getComputedStyle(document.querySelector('.mb-title')).display"))
+    page.fill('[name=nameAr_0]', 'دواء س'); page.fill('[name=nameAr_1]', 'دواء ص')
+    page.set_input_files('#photo-input-gal-2', '/tmp/pill.jpg'); page.wait_for_timeout(700)
+    page.click('[data-act="pe-done"][data-idx="2"]'); page.wait_for_timeout(300)
+    page.click('[data-act="save-med"]'); page.wait_for_timeout(900)
+    after = page.evaluate("() => window.__tr.store.getState().meds.length")
+    print('meds added in one go:', after - before)
+    # same schedule -> grouped alarm contains all of them
+    page.wait_for_timeout(1500)
+    print('grouped alarm sizes:', page.evaluate("() => [...new Set(window.__calls.alarms.alarms.filter(a => a.time === '08:00').map(a => a.items.length))]"))
+    # validation: block without name/photo is rejected
+    page.click('[data-act="add-med"]'); page.wait_for_timeout(400)
+    page.click('[data-act="set-count"][data-n="2"]'); page.fill('[name=nameAr_0]', 'فقط واحد')
+    page.click('[data-act="save-med"]'); page.wait_for_timeout(400)
+    print('rejects empty 2nd block:', page.evaluate("() => window.__tr.store.getState().meds.length") == after)
+    page.evaluate("() => { const d=document.querySelector('#modal'); if (d.open) d.close(); }")
 
     # ---- phone ringtone list: preview stops on close
     page.click('[data-nav="settings"]'); page.wait_for_timeout(300)
